@@ -14,6 +14,7 @@ export function ThemeToggle() {
       onClick={toggle}
       className="text-slate-400 hover:text-white ml-auto"
       aria-label="Cambiar tema"
+      title={theme === "dark" ? "Modo claro" : "Modo oscuro"}
     >
       {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
     </Button>

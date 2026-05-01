@@ -6,9 +6,7 @@
 - **AI**: `@assistant-ui/react` (`useLocalRuntime` pattern) + Vercel AI SDK
 - **Markdown**: `react-markdown` + `remark-gfm` para renderizar mensajes
 - **UI Components**: Shadcn/ui (neutral base, `base-nova` style, Lucide icons)
-- **State**: Zustand
 - **Dialog**: `@base-ui/react/dialog` primitives directly — do NOT use the shadcn dialog wrapper
-- **Testing**: Playwright for E2E testing (browser automation)
 - **External DB**: Omnia Gateway manages user data, plan, usage, and chat history
 
 ## Architecture
@@ -30,6 +28,7 @@
 | `src/app/(main)/` | Main pages (chat) — with sidebar layout |
 | `src/app/api/` | Proxies requests to Omnia API |
 | `src/components/` | Business logic components |
+| `src/components/chat/` | Chat sub-components (MessageBubble, ChatInput, types) |
 | `src/components/ui/` | Shadcn/primitives |
 | `src/lib/auth.ts` | Token utilities |
 
@@ -69,6 +68,29 @@ const OMNIA_BASE = process.env.NEXT_PUBLIC_OMNIA_BASE_URL || "http://217.216.43.
 
 **Auth:** `Authorization: Bearer sk-omnia-...` header on all requests
 
+### Chat Request Format (to Omnia)
+
+El frontend envía solo el mensaje actual + system prompt. **No envía el historial completo** — Omnia lo gestiona server-side.
+
+```json
+POST /v1/chat/completions
+{
+  "messages": [
+    { "role": "system", "content": "Eres un asistente..." },    // opcional, desde localStorage
+    { "role": "user", "content": "mensaje del usuario",         // actual input
+      "files": [{ "name": "image.jpg", "data": "base64...", "type": "image/jpeg" }]   // opcional
+    }
+  ],
+  "integrations": {                                             // opcional, desde localStorage
+    "woocommerce": {
+      "siteUrl": "https://mitienda.com",
+      "consumerKey": "ck_xxx",
+      "consumerSecret": "cs_xxx"
+    }
+  }
+}
+```
+
 ### Chat Response Format (from Omnia)
 ```json
 {
@@ -79,7 +101,11 @@ const OMNIA_BASE = process.env.NEXT_PUBLIC_OMNIA_BASE_URL || "http://217.216.43.
     "tool_calls": [...]
   },
   "files": [{"id": 1, "name": "file.jpg", "url": "...", "type": "image/jpeg"}],
-  "history": [...],
+  "history": [
+    { "role": "assistant", "content": "", "thinking": "...", "tool_calls": [...], "created_at": "..." },   // thinking + tool_calls dentro del mismo assistant
+    { "role": "tool", "content": "...", "tool_name": "webfetch", "created_at": "..." },
+    { "role": "assistant", "content": "Respuesta final", "thinking": "...", "tokens": 8440, "created_at": "..." }
+  ],
   "usage": {
     "monthly_tokens": 78,
     "monthly_requests": 1,
@@ -88,25 +114,117 @@ const OMNIA_BASE = process.env.NEXT_PUBLIC_OMNIA_BASE_URL || "http://217.216.43.
 }
 ```
 
+### GET /v1/conversation Response Format
+```json
+{
+  "messages": [
+    { "role": "user", "content": "mensaje", "created_at": "..." },
+    { "role": "assistant", "content": "", "thinking": "...", "tool_calls": [...], "created_at": "..." },
+    { "role": "tool", "content": "...", "tool_name": "webfetch", "created_at": "..." },
+    { "role": "assistant", "content": "Respuesta final", "thinking": "...", "tokens": 8440, "created_at": "..." }
+  ]
+}
+```
+
 ### Known Issues
 - **GET /v1/conversation** — Returns `files` as string array (e.g., `["id=3 name='test.jpg' url='/uploads/...' type='image/jpeg'"]`)
   - **Status:** Fixed by Omnia developer — frontend parses the string format
   - Images load correctly from Omnia's `/uploads/` path
 
-## Testing (Playwright)
-- E2E tests can use Playwright to automate browser testing
-- Example test structure:
-```ts
-import { test, expect } from '@playwright/test';
-test('login flow', async ({ page }) => {
-  await page.goto('/login');
-  await page.fill('[type="email"]', 'user@example.com');
-  await page.click('button[type="submit"]');
-  await expect(page).toHaveURL('/chat');
-});
+## Integrations (Integraciones)
+
+Las integraciones permiten que el agente de IA se conecte a servicios externos (WooCommerce, etc.).
+
+### Arquitectura
+
 ```
-- Run tests: `npx playwright test`
-- Install browsers: `npx playwright install chromium`
+[Frontend] localStorage → POST /api/chat + integrations → [Proxy] → POST /v1/chat/completions + integrations → [Omnia API]
+                                                                                                                          ↓
+                                                                                                             Omnia ejecuta el "skill"
+                                                                                                             (cómo conectarse, qué endpoints llamar)
+                                                                                                             contra la API externa
+                                                                                                                          ↓
+[Frontend] ←────────────── JSON response ←──────────────────────────────────────────────────────────── [Omnia API] responde al usuario
+```
+
+**Regla fundamental:** El "skill" (conocimiento de cómo conectarse y qué hacer) lo tiene **Omnia server-side**. El frontend solo:
+1. Guarda las credenciales de conexión
+2. Las envía a Omnia en cada request de chat
+3. Omnia ejecuta la integración y devuelve la respuesta al usuario
+
+### Dónde se guardan
+
+| Dato | Dónde | Key |
+|------|-------|-----|
+| Token API | `localStorage` | `"api_key"` |
+| System prompt | `localStorage` | `"systemPrompt"` |
+| Credenciales de integraciones | `localStorage` | `"integrations"` |
+| Tema | `localStorage` | `"theme"` |
+
+Las credenciales se guardan en `localStorage` con formato:
+```json
+{
+  "enabled": ["woocommerce"],
+  "woocommerce": {
+    "siteUrl": "https://mitienda.com",
+    "consumerKey": "ck_xxxxxxxxx",
+    "consumerSecret": "cs_xxxxxxxxx"
+  }
+}
+```
+
+- `enabled`: array con las keys de integraciones activas (toggle on)
+- Cada integración tiene su propio objeto con credenciales
+- Solo las integraciones en `enabled` se envían a Omnia en cada request
+
+### Flujo de integración (WooCommerce ejemplo)
+
+1. **Usuario configura integración** en sidebar derecho (🔌)
+   - Ingresa: Site URL, Consumer Key, Consumer Secret
+   - Se prueba la conexión contra `GET /wp-json/wc/v3/system_status`
+   - Se guarda en `localStorage` key `"integrations"`
+2. **Usuario envía un mensaje** relacionado (ej: "Cuántos pedidos tengo?")
+3. **ChatClient** lee `localStorage.getItem("integrations")` y lo incluye en el body:
+```json
+POST /api/chat
+{
+  "messages": [
+    { "role": "user", "content": "¿Cuántos pedidos tengo pendientes?" }
+  ],
+  "integrations": {
+    "woocommerce": {
+      "siteUrl": "https://mitienda.com",
+      "consumerKey": "ck_xxx",
+      "consumerSecret": "cs_xxx"
+    }
+  }
+}
+```
+4. **Proxy** `/api/chat/route.ts` forwardea `{ messages, integrations }` a Omnia
+5. **Omnia** recibe las credenciales, ejecuta la API de WooCommerce (sabe cómo hacerlo = el skill), y responde:
+   - "Tienes 3 pedidos pendientes por $450"
+6. **Frontend** muestra la respuesta
+
+### API Routes
+
+| Endpoint | Descripción |
+|----------|-------------|
+| `POST /api/chat` | Proxy a Omnia para chat + integraciones |
+| `POST /api/integrations/woocommerce/test` | Prueba conexión contra WooCommerce |
+| `POST /api/integrations/evolution/test` | Prueba conexión contra Evolution API |
+
+### IntegrationsSidebar (src/components/IntegrationsSidebar.tsx)
+
+- Sidebar derecho con botón toggle en header (icono 🔌)
+- Cada integración es una card independiente con:
+  - **Toggle switch** (icono ToggleLeft/ToggleRight) para activar/desactivar
+  - Campos de configuración según la integración
+  - Botón "Conectar" → prueba conexión → guarda en localStorage
+  - Badge verde "Conectado" cuando hay credenciales
+  - Botón "Desconectar" elimina las credenciales
+- Solo las integraciones con toggle activo se envían a Omnia en cada request
+- Placeholder para futuras integraciones
+- System Prompt editor con MarkdownEditor (toolbar con formato markdown + vista previa)
 
 ## Authentication Flow
 
@@ -126,15 +244,10 @@ test('login flow', async ({ page }) => {
 [User writes optional text]
         ↓
 [Send] → POST /api/chat with:
-{
-  "messages": [{
+{ "messages": [{
     "role": "user",
     "content": "optional text",
-    "files": [{
-      "name": "image.jpg",
-      "data": "base64...without prefix",
-      "type": "image/jpeg"
-    }]
+    "files": [{ "name": "image.jpg", "data": "base64...", "type": "image/jpeg" }]
   }]
 }
 ```
@@ -144,32 +257,54 @@ test('login flow', async ({ page }) => {
 ### ChatClient (src/components/ChatClient.tsx)
 - Custom implementation (no assistant-ui ThreadPrimitive due to API incompatibilities)
 - Loads conversation from `GET /api/conversation` on mount
-- Shows markdown content via `react-markdown` + `remark-gfm`
-- Shows `thinking` field in blue box as **separate block**
-- Shows `tool` role messages with orange styling as **separate block**
+- Shows markdown content via `MarkdownRenderer` (links open in new tab)
+- Shows `thinking` (💭) and `tool` (🔧) blocks in chat
 - **Collapse/expand** buttons (▾/▸) on thinking and tool blocks
 - **Image upload**: Button 📎 to select images, Ctrl+V to paste
-- Images converted to base64 and sent in `files` array
-- Footer shows response time, tokens remaining, audio button
-- Audio: Web Speech API with Spanish voice selection (excludes "whisper" voices)
+- Footer shows cronometer time + tokens remaining + audio button
+- Audio: Web Speech API with Spanish voice (rate 1.1, pitch 0.9)
+- Processing indicator with animated spinner and cronometer
 - Manual send via `POST /api/chat` — does NOT use runtime for sending
+- Empty state with quick prompt buttons (general + integration-specific)
 
-### Message Roles
-- `user` — Blue bubble, right-aligned, may contain image thumbnails
-- `assistant` — Gray bubble, left-aligned, with footer (time, tokens, audio)
-- `tool` — Orange bubble, collapsible, shows tool name and arguments
-- `thinking` — Blue-tinted box, collapsible, shows AI's internal reasoning
+### Sub-components (src/components/chat/)
+
+| Component | File | Description |
+|---|---|---|
+| `MessageBubble` | `MessageBubble.tsx` | 4 role-specific message renders (tool, user, thinking, assistant) |
+| `ChatInput` | `ChatInput.tsx` | Textarea + image attach + send button |
+| `types` | `types.ts` | Message, AttachedFile type definitions |
+
+### Layout (src/app/(main)/layout.tsx)
+- **Header**: SidebarTrigger → UsageHeader (token bar) → action buttons
+- **Header actions**: 🗑 (clear chat) → ⬇ (download JSON) → 🌙 (theme toggle) → 🔌 (integrations) → 🚪 (logout)
+- All destructive actions have confirmation dialogs using `@base-ui/react/dialog`
+- Download button fetches conversation as `chat-YYYY-MM-DD.json`
+
+### UsageHeader (src/components/UsageHeader.tsx)
+- Token usage bar with used/total and remaining count
+- Replaces the old "OpenFlow AI" text in header
+- Connected from layout via ProfileProvider
+
+### MarkdownRenderer (src/components/MarkdownRenderer.tsx)
+- Centralized markdown renderer with `react-markdown` + `remark-gfm`
+- All links (`<a>`) open in `target="_blank" rel="noopener noreferrer"`
+- Used by both MessageBubble and MarkdownEditor preview
+
+### MarkdownEditor (src/components/MarkdownEditor.tsx)
+- Rich markdown editing toolbar: **B I H ≡ 1. `</>` 🔗**
+- Toggle between edit mode and preview mode
+- Used for System Prompt editing in IntegrationsSidebar
 
 ### AppSidebar (src/components/AppSidebar.tsx)
-- Collapsible left sidebar with user info, plan display, usage stats
-- Shows API key (clickable to copy, fallback for no clipboard API)
-- Shows `created_at` as "Desde: fecha" subscription date
-- Plan name, included tokens, usage statistics
-- Logout button clears token and redirects to login
+- Left sidebar with user info (name, email, phone, created_at, API key)
+- No Card wrapper or avatar — clean text layout
+- Plan badge + upgrade card
+- API Key shown truncated with copy button
+- Edit profile modal with validation (name required, email format) and confirmation dialog
 - Plan change modal via `@base-ui/react/dialog` primitives
-- System prompt editor (saved to localStorage)
-- Clear history button with **confirmation dialog** before DELETE
-- Uses `ProfileContext.clearMessages()` to clear chat UI
+- "Acerca de nosotros" dialog in footer
+- Logout clears `api_key`, `systemPrompt`, `integrations` from localStorage
 
 ### ProfileContext (src/components/ProfileContext.tsx)
 - React Context for sharing profile AND messages between ChatClient and AppSidebar
@@ -197,12 +332,13 @@ test('login flow', async ({ page }) => {
 ### Audio Playback (TTS)
 - Web Speech API (browser native)
 - Spanish voices, excludes "whisper" voices
+- Rate 1.1, pitch 0.9 for natural sound
 - Click 🔊 to speak message content
 - Click again to stop
 - Cleans markdown formatting before speaking
 
 ### Response Footer
-- Response time: `2.3s`
+- Cronometer time from processing indicator
 - Tokens remaining from profile API
 - Audio button
 
@@ -215,9 +351,15 @@ test('login flow', async ({ page }) => {
 - 401/403 → clear token + redirect to `/login`
 - API errors → show in UI
 - Image validation → toast errors
+- Chat errors display in the chat as assistant messages
+
+### Empty State
+- Logo + "OpenFlow Agents" title
+- Quick prompts: general (3) and integration-specific (2 per active integration)
+- Styled with rounded-xl, hover effects
 
 ## Quirks & Gotchas
-- **No local DB**: `src/db/` was removed. All user/chat data is in Omnia.
+- **No local DB**: All user/chat data is in Omnia.
 - **Tailwind 4**: No `tailwind.config.js`. Theme overrides in `src/app/globals.css`.
 - **Dialog**: Always use `@base-ui/react/dialog` primitives, never shadcn wrapper.
 - **Theme**: HTML has `className="dark"` for SSR. Toggle persists to `localStorage` key `theme`.
@@ -227,6 +369,7 @@ test('login flow', async ({ page }) => {
 - **Audio**: Depends on browser/system voices. Firefox on Linux uses speech-dispatcher voices (can be robotic). Exclude "whisper" voices for better quality.
 - **API Key display**: Click to select all, Ctrl+C to copy. Fallback text selection for browsers without clipboard API.
 - **Images in history**: `files` field comes as string format `["id=3 name='file.jpg' url='/uploads/...' type='image/jpeg'"]` - frontend parses to object with name/url/type
+- **Omnia history format**: `tool_calls` + `thinking` dentro del mismo `assistant` message. El frontend los separa en bloques tool (🔧) y thinking (💭).
 
 ## Developer Commands
 - `npm run dev` — Dev server (port 3000 default; production uses 3001 via pm2)
@@ -249,25 +392,38 @@ pm2 start npm --name openflow -- run dev -- --port 3001
 ```
 src/
 ├── app/
-│   ├── (auth)/login/page.tsx     # Login/registration page
+│   ├── (auth)/login/page.tsx           # Login/registration page
 │   ├── (main)/
-│   │   ├── layout.tsx             # Main layout with sidebar
-│   │   └── chat/page.tsx          # Chat page
+│   │   ├── layout.tsx                   # Main layout with header + sidebars
+│   │   └── chat/page.tsx                # Chat page
 │   └── api/
 │       ├── auth/login/route.ts
 │       ├── auth/check-email/route.ts
-│       ├── chat/route.ts
+│       ├── chat/route.ts                # Proxy to Omnia + integrations
 │       ├── conversation/route.ts
 │       ├── profile/route.ts
 │       ├── profile/plan/route.ts
-│       └── plans/route.ts
+│       ├── plans/route.ts
+│       └── integrations/
+│           ├── woocommerce/test/route.ts
+│           └── evolution/test/route.ts
 ├── components/
-│   ├── ChatClient.tsx            # Main chat UI with images/audio
-│   ├── AppSidebar.tsx            # Sidebar with profile/usage/API key
-│   ├── AuthChecker.tsx           # Auth redirect component
-│   ├── ProfileContext.tsx        # Context for tokens AND messages
-│   └── ui/                       # Shadcn components
-└── lib/auth.ts                   # Token utilities
+│   ├── ChatClient.tsx                   # Main chat logic
+│   ├── AppSidebar.tsx                   # Left sidebar (profile, plan, API key)
+│   ├── IntegrationsSidebar.tsx          # Right sidebar (integrations + system prompt)
+│   ├── AuthChecker.tsx                  # Auth redirect guard
+│   ├── ProfileContext.tsx               # Shared state context
+│   ├── MarkdownEditor.tsx               # Rich markdown editor toolbar
+│   ├── MarkdownRenderer.tsx             # Centralized markdown renderer
+│   ├── UsageHeader.tsx                  # Token usage bar in header
+│   ├── ThemeToggle.tsx                  # Dark/light toggle
+│   ├── theme-provider.tsx               # Theme context provider
+│   ├── chat/
+│   │   ├── MessageBubble.tsx            # 4 message role renders
+│   │   ├── ChatInput.tsx                # Input + file attach
+│   │   └── types.ts                     # Shared types
+│   └── ui/                              # Shadcn components
+└── lib/auth.ts                          # Token utilities
 
-.env.local                       # OMNIA_BASE_URL (not in git)
+.env.local                               # OMNIA_BASE_URL (not in git)
 ```

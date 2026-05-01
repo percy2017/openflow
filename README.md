@@ -1,36 +1,97 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# OpenFlow
 
-## Getting Started
+OpenFlow es una consola de agentes inteligentes impulsada por IA. Conecta con tus herramientas favoritas y automatiza tu negocio a través de un chat conversacional potenciado por Omnia Gateway.
 
-First, run the development server:
+## Características
+
+- **Chat inteligente** con soporte para markdown, imágenes y audio
+- **Integraciones** con WooCommerce, WordPress y Evolution API (más próximamente)
+- **Editor System Prompt** con formato markdown y toolbar
+- **Gestión de suscripción** con planes y tokens
+- **Autenticación** multi-usuario con registro y login
+- **Modo oscuro/claro**
+- **Descarga de historial** en JSON
+
+## Tecnologías
+
+- **Frontend:** Next.js 15 (App Router), React 19, Tailwind CSS 4
+- **UI:** Shadcn/ui, Lucide icons, Base UI
+- **Markdown:** react-markdown, remark-gfm
+- **Backend:** Omnia Gateway API (proxy via Next.js API routes)
+- **Audio:** Web Speech API
+
+## Requisitos
+
+- Node.js 18+
+- npm
+- pm2 (para producción)
+
+## Instalación
 
 ```bash
+# Clonar el repositorio
+git clone https://github.com/tu-usuario/openflow.git
+cd openflow
+
+# Instalar dependencias
+npm install
+
+# Configurar variables de entorno
+cp .env.example .env.local
+# Editar .env.local con:
+# OMNIA_BASE_URL=http://217.216.43.75:9000
+# NEXT_PUBLIC_OMNIA_BASE_URL=http://217.216.43.75:9000
+
+# Iniciar en desarrollo
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+
+# O en producción con pm2
+pm2 start npm --name openflow -- run dev -- --port 3001
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Variables de Entorno
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Variable | Descripción |
+|----------|-------------|
+| `OMNIA_BASE_URL` | URL base de la API de Omnia (server-side) |
+| `NEXT_PUBLIC_OMNIA_BASE_URL` | URL base de la API de Omnia (client-side) |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Estructura del Proyecto
 
-## Learn More
+```
+src/
+├── app/
+│   ├── (auth)/login/         # Página de login/registro
+│   ├── (main)/
+│   │   ├── layout.tsx        # Layout principal con header y sidebars
+│   │   └── chat/             # Página de chat
+│   └── api/                  # API routes (proxy a Omnia)
+├── components/
+│   ├── ChatClient.tsx        # Lógica principal del chat
+│   ├── AppSidebar.tsx        # Sidebar izquierdo (perfil, plan, API key)
+│   ├── IntegrationsSidebar.tsx # Sidebar derecho (integraciones)
+│   ├── MarkdownEditor.tsx    # Editor markdown con toolbar
+│   ├── MarkdownRenderer.tsx  # Renderizador markdown centralizado
+│   ├── UsageHeader.tsx       # Barra de uso de tokens en header
+│   ├── chat/                 # Sub-componentes del chat
+│   └── ui/                   # Componentes Shadcn/ui
+└── lib/auth.ts               # Utilidades de autenticación
+```
 
-To learn more about Next.js, take a look at the following resources:
+## API Endpoints
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Endpoint | Método | Descripción |
+|----------|--------|-------------|
+| `/api/auth/check-email` | POST | Verificar email existente |
+| `/api/auth/login` | POST | Login o registro |
+| `/api/chat` | POST | Enviar mensaje al agente |
+| `/api/conversation` | GET/DELETE | Obtener/limpiar historial |
+| `/api/profile` | GET/PUT | Obtener/actualizar perfil |
+| `/api/profile/plan` | PUT | Cambiar plan |
+| `/api/plans` | GET | Listar planes |
+| `/api/integrations/woocommerce/test` | POST | Probar conexión WooCommerce |
+| `/api/integrations/evolution/test` | POST | Probar conexión Evolution API |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Licencia
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MIT
