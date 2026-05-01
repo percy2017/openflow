@@ -1,4 +1,4 @@
-const OMNIA_BASE = "http://217.216.43.75:9000";
+const OMNIA_BASE = process.env.OMNIA_BASE_URL || "http://217.216.43.75:9000";
 
 export async function PUT(req: Request) {
   const token = req.headers.get("authorization")?.replace("Bearer ", "");

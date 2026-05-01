@@ -7,21 +7,11 @@ import {
   SidebarHeader,
 } from "@/components/ui/sidebar";
 import { Dialog } from "@base-ui/react/dialog";
-import { User, Crown, Loader2, Trash2, MessageSquare, ChevronDown, ChevronUp, Save, X, Pencil, Bot, Info, XCircle, Check, LogOut } from "lucide-react";
+import { User, Crown, Loader2, Trash2, MessageSquare, ChevronDown, ChevronUp, Save, X, Pencil, Bot, Info, XCircle, Check, LogOut, Copy } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-
-type Message = {
-  role: string;
-  content: string;
-  created_at: string;
-};
-
-type ProfileData = {
-  user: { name: string; email: string; phone?: string };
-  plan: { id: number; name: string; monthly_price: number; included_tokens: number };
-  usage: { monthly_tokens: number; monthly_requests: number; tokens_remaining: number };
-};
+import { clearToken } from "@/lib/auth";
+import { useProfile } from "@/components/ProfileContext";
 
 type PlanData = {
   id: number;
@@ -34,9 +24,7 @@ type PlanData = {
 const VERSION = "v0.1.0";
 
 export function AppSidebar() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const { profile, setProfile, updateTokens, clearMessages, messages } = useProfile();
   const [profileLoading, setProfileLoading] = useState(false);
   const [systemPrompt, setSystemPrompt] = useState("");
   const [systemPromptOpen, setSystemPromptOpen] = useState(false);
@@ -46,29 +34,33 @@ export function AppSidebar() {
   const [plansLoading, setPlansLoading] = useState(false);
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [updatingPlan, setUpdatingPlan] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("api_key");
     const headers: HeadersInit = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    fetch("/api/conversation", { headers })
-      .then((r) => r.json())
-      .then((data) => {
-        setMessages(data.messages || []);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-
     setProfileLoading(true);
     fetch("/api/profile", { headers })
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) {
+          clearToken();
+          window.location.href = "/login";
+          return null;
+        }
+        return r.json();
+      })
       .then((data) => {
+        if (!data) return;
         setProfile(data);
         setEditForm({ name: data.user.name, email: data.user.email, phone: data.user.phone || "" });
         setProfileLoading(false);
       })
-      .catch(() => setProfileLoading(false));
+      .catch(() => {
+        clearToken();
+        window.location.href = "/login";
+      });
 
     const saved = localStorage.getItem("systemPrompt");
     if (saved) setSystemPrompt(saved);
@@ -113,13 +105,14 @@ export function AppSidebar() {
   };
 
   const handleDelete = async () => {
+    setShowDeleteConfirm(false);
     const token = localStorage.getItem("api_key");
     const headers: HeadersInit = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
     toast.success("Historial limpiado");
     await fetch("/api/conversation", { method: "DELETE", headers });
-    setMessages([]);
+    clearMessages();
   };
 
   const handleShowPlans = async () => {
@@ -229,6 +222,11 @@ export function AppSidebar() {
                     <div className="flex flex-col min-w-0">
                       <span className="text-sm font-medium text-sidebar-foreground truncate">{profile.user.name}</span>
                       <span className="text-xs text-sidebar-foreground/60 truncate">{profile.user.email}</span>
+                      {profile.user.created_at && (
+                        <span className="text-xs text-sidebar-foreground/40 truncate">
+                          Desde: {new Date(profile.user.created_at).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" })}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -318,9 +316,41 @@ export function AppSidebar() {
                 </div>
               </div>
 
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-sidebar-foreground/60 uppercase tracking-wide">API Key</p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-xs bg-muted px-2 py-1.5 rounded truncate text-sidebar-foreground/70">
+                    {localStorage.getItem("api_key") || "No disponible"}
+                  </code>
+                  <button
+                    onClick={() => {
+                      const key = localStorage.getItem("api_key");
+                      if (!key) return;
+                      try {
+                        const textarea = document.createElement("textarea");
+                        textarea.value = key;
+                        textarea.style.position = "fixed";
+                        textarea.style.opacity = "0";
+                        document.body.appendChild(textarea);
+                        textarea.select();
+                        document.execCommand("copy");
+                        document.body.removeChild(textarea);
+                        toast.success("Copiado al portapapeles");
+                      } catch {
+                        toast.error("No se pudo copiar");
+                      }
+                    }}
+                    className="p-1.5 rounded hover:bg-muted transition-colors text-sidebar-foreground/60"
+                    title="Copiar API Key"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
               {messages.length > 0 && (
                 <button
-                  onClick={handleDelete}
+                  onClick={() => setShowDeleteConfirm(true)}
                   className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm text-destructive hover:bg-destructive/10 transition-colors"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -366,6 +396,34 @@ export function AppSidebar() {
           </div>
         </Dialog.Popup>
       </Dialog.Portal>
+
+      <Dialog.Root open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <Dialog.Portal>
+          <Dialog.Popup className="fixed inset-0 z-50 flex items-center justify-center">
+            <Dialog.Backdrop className="fixed inset-0 bg-black/50" />
+            <div className="bg-background rounded-xl p-6 max-w-sm w-full mx-4 shadow-lg">
+              <Dialog.Title className="text-lg font-semibold mb-2">¿Limpiar historial?</Dialog.Title>
+              <Dialog.Description className="text-sm text-muted-foreground mb-4">
+                Esta acción no se puede deshacer. Se eliminarán todos los mensajes de la conversación.
+              </Dialog.Description>
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="px-4 py-2 rounded-lg text-sm border border-border hover:bg-muted transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDelete}
+                  className="px-4 py-2 rounded-lg text-sm bg-destructive text-white hover:bg-destructive/90 transition-colors"
+                >
+                  Eliminar
+                </button>
+              </div>
+            </div>
+          </Dialog.Popup>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       <Dialog.Root open={showPlanModal} onOpenChange={setShowPlanModal}>
         <Dialog.Portal>
