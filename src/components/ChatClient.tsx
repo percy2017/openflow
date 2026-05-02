@@ -12,6 +12,9 @@ import { MessageBubble } from "./chat/MessageBubble";
 import { ChatInput } from "./chat/ChatInput";
 import type { Message, AttachedFile } from "./chat/types";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type RawMessage = Record<string, any>;
+
 const omniaAdapter: ChatModelAdapter = {
   async run({ messages, abortSignal }) {
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
@@ -19,7 +22,8 @@ const omniaAdapter: ChatModelAdapter = {
       typeof lastUser?.content === "string"
         ? lastUser.content
         : Array.isArray(lastUser?.content)
-          ? lastUser.content.map((p: any) => p.text || "").join("")
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ? (lastUser.content as any[]).map((p: Record<string, string>) => p.text || "").join("")
           : "";
 
     const res = await fetch("/api/chat", {
@@ -50,49 +54,66 @@ export function ChatClient() {
   const [elapsed, setElapsed] = useState(0);
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const parseFiles = (m: RawMessage): Message["files"] => {
+    if (!m.files) return null;
+    if (typeof m.files === "string") {
+      const nameMatch = m.files.match(/name='([^']+)'/);
+      const urlMatch = m.files.match(/url='([^']+)'/);
+      const typeMatch = m.files.match(/type='([^']+)'/);
+      if (nameMatch && urlMatch && typeMatch) return [{ name: nameMatch[1], url: urlMatch[1], type: typeMatch[1] }];
+      return null;
+    }
+    if (Array.isArray(m.files)) {
+      return m.files.filter((f): f is string => typeof f === "string").map((f) => {
+        const nameMatch = f.match(/name='([^']+)'/);
+        const urlMatch = f.match(/url='([^']+)'/);
+        const typeMatch = f.match(/type='([^']+)'/);
+        if (nameMatch && urlMatch && typeMatch) return { name: nameMatch[1], url: urlMatch[1], type: typeMatch[1] };
+        return null;
+      }).filter((f): f is { name: string; url: string; type: string } => f !== null);
+    }
+    return null;
+  };
+
+  const parseMessages = (raw: RawMessage[]): Message[] => {
+    const msgs: Message[] = [];
+    raw.forEach((m) => {
+      if (m.role === "user") {
+        msgs.push({ id: `msg-${msgs.length}`, role: "user", content: m.content || "", files: parseFiles(m) });
+      } else if (m.role === "assistant") {
+        if (m.thinking) msgs.push({ id: `msg-${msgs.length}-thinking`, role: "thinking", content: m.thinking });
+        if (m.tool_calls && m.tool_calls.length > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (m.tool_calls as any[]).forEach((tc: any, i: number) => {
+            msgs.push({ id: `msg-${msgs.length}-tool-${i}`, role: "tool", content: "", toolName: tc.function?.name, toolCalls: [tc] });
+          });
+        }
+        if (m.content) msgs.push({ id: `msg-${msgs.length}`, role: "assistant", content: m.content });
+      } else if (m.role === "tool") {
+        msgs.push({ id: `msg-${msgs.length}`, role: "tool", content: m.content || "", toolName: m.tool_name, toolCalls: m.tool_calls });
+      }
+    });
+    return msgs;
+  };
+
+  const loadConversation = async (headers: HeadersInit): Promise<boolean> => {
+    try {
+      const res = await fetch("/api/conversation", { headers });
+      const data: { messages?: RawMessage[] } = await res.json();
+      const msgs = parseMessages(data.messages || []);
+      setMessages(msgs);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   useEffect(() => {
     const token = localStorage.getItem("api_key");
     const headers: HeadersInit = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    fetch("/api/conversation", { headers })
-      .then((r) => r.json())
-      .then((data: { messages?: any[] }) => {
-        const msgs: Message[] = [];
-        (data.messages || []).forEach((m) => {
-          if (m.role === "user") {
-            let files: Message["files"] = null;
-            if (m.files) {
-              if (typeof m.files === "string") {
-                const nameMatch = m.files.match(/name='([^']+)'/);
-                const urlMatch = m.files.match(/url='([^']+)'/);
-                const typeMatch = m.files.match(/type='([^']+)'/);
-                if (nameMatch && urlMatch && typeMatch) files = [{ name: nameMatch[1], url: urlMatch[1], type: typeMatch[1] }];
-              } else if (Array.isArray(m.files)) {
-                files = m.files.map((f: any) => {
-                  if (typeof f === "string") {
-                    const nameMatch = f.match(/name='([^']+)'/);
-                    const urlMatch = f.match(/url='([^']+)'/);
-                    const typeMatch = f.match(/type='([^']+)'/);
-                    if (nameMatch && urlMatch && typeMatch) return { name: nameMatch[1], url: urlMatch[1], type: typeMatch[1] };
-                  }
-                  return f;
-                }).filter(Boolean);
-              }
-            }
-            msgs.push({ id: `msg-${msgs.length}`, role: "user", content: m.content || "", files });
-          } else if (m.role === "assistant") {
-            if (m.thinking) msgs.push({ id: `msg-${msgs.length}-thinking`, role: "thinking", content: m.thinking });
-            if (m.tool_calls && m.tool_calls.length > 0) msgs.push({ id: `msg-${msgs.length}-tool`, role: "tool", content: "", toolName: m.tool_calls[0]?.function?.name, toolCalls: m.tool_calls });
-            if (m.content) msgs.push({ id: `msg-${msgs.length}`, role: "assistant", content: m.content });
-          } else if (m.role === "tool") {
-            msgs.push({ id: `msg-${msgs.length}`, role: "tool", content: m.content || "", toolName: m.tool_name, toolCalls: m.tool_calls });
-          }
-        });
-        setMessages(msgs);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+    loadConversation(headers).finally(() => setLoading(false));
   }, [setMessages]);
 
   useEffect(() => {
@@ -173,7 +194,8 @@ export function ChatClient() {
     elapsedRef.current = setInterval(() => setElapsed((prev) => prev + 1), 1000);
 
     const systemPrompt = localStorage.getItem("systemPrompt") || "";
-    const msgToSend: any = { role: "user", content: messageContent };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const msgToSend: Record<string, any> = { role: "user", content: messageContent };
     if (attachedFiles.length > 0) msgToSend.files = attachedFiles;
     const messagesToSend = [
       ...(systemPrompt ? [{ role: "system" as const, content: systemPrompt }] : []),
@@ -181,6 +203,7 @@ export function ChatClient() {
     ];
 
     const integrationsRaw = localStorage.getItem("integrations");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let integrations: Record<string, any> | undefined;
     if (integrationsRaw) {
       try {
@@ -198,10 +221,9 @@ export function ChatClient() {
     const headers: HeadersInit = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    const startTime = Date.now();
-
     try {
-      const body: any = { messages: messagesToSend };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body: Record<string, any> = { messages: messagesToSend };
       if (integrations && Object.keys(integrations).length > 0) body.integrations = integrations;
 
       const res = await fetch("/api/chat", { method: "POST", headers, body: JSON.stringify(body) });
@@ -215,13 +237,9 @@ export function ChatClient() {
         return;
       }
 
-      let data: any;
       const contentType = res.headers.get("content-type") || "";
-      if (contentType.includes("application/json")) data = await res.json();
-      else data = { message: { content: await res.text() } };
-
-      const responseTime = (Date.now() - startTime) / 1000;
-      const cronoTime = elapsed;
+      if (contentType.includes("application/json")) await res.json();
+      else await res.text();
 
       let tokensRemaining = null;
       try {
@@ -232,24 +250,9 @@ export function ChatClient() {
         updateTokens(tokensRemaining);
       } catch { clearToken(); window.location.href = "/login"; return; }
 
-      if (data.history && data.history.length > 0) {
-        const msgs: Message[] = [];
-        for (const m of data.history) {
-          if (m.role === "user") continue;
-          if (m.role === "tool") {
-            msgs.push({ id: `tool-${Date.now()}-${msgs.length}`, role: "tool", content: m.content || "", toolName: m.tool_name, toolCalls: m.tool_calls });
-          } else if (m.role === "assistant") {
-            if (m.thinking) msgs.push({ id: `thinking-${Date.now()}-${msgs.length}`, role: "thinking", content: m.thinking });
-            if (m.tool_calls && m.tool_calls.length > 0) msgs.push({ id: `tool-${Date.now()}-${msgs.length}`, role: "tool", content: "", toolName: m.tool_calls[0]?.function?.name, toolCalls: m.tool_calls });
-            if (m.content) msgs.push({ id: `assistant-${Date.now()}-${msgs.length}`, role: "assistant", content: m.content, tokens: tokensRemaining, responseTime, cronoTime });
-          }
-        }
-        if (msgs.length > 0) setMessages((prev) => [...prev, ...msgs]);
-      } else if (data.message?.content) {
-        setMessages((prev) => [...prev, { id: `assistant-${Date.now()}`, role: "assistant", content: data.message.content, tokens: tokensRemaining, responseTime, cronoTime }]);
-      } else {
-        setMessages((prev) => [...prev, { id: `assistant-${Date.now()}`, role: "assistant", content: data.error || "Sin respuesta" }]);
-      }
+      await loadConversation(headers);
+      setSending(false);
+      return;
     } catch {
       setMessages((prev) => [...prev, { id: `error-${Date.now()}`, role: "assistant", content: "Error al enviar" }]);
     }

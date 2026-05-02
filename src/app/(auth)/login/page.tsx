@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Bot, Crown, Loader2, Check, ArrowRight } from "lucide-react";
 import { saveToken } from "@/lib/auth";
 import { toast } from "sonner";
@@ -26,7 +25,6 @@ type CheckEmailResponse = {
 };
 
 export default function LoginPage() {
-  const router = useRouter();
   const [step, setStep] = useState<"email" | "form">("email");
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");

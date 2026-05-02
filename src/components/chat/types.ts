@@ -14,7 +14,7 @@ export type Message = {
   tokens?: number;
   responseTime?: number;
   cronoTime?: number;
-  files?: Array<{ name: string; url: string; type: string }>;
+  files?: Array<{ name: string; url: string; type: string }> | null;
 };
 
 export type AttachedFile = {

@@ -30,10 +30,11 @@ export async function POST(req: Request) {
       version: data.version,
       message: data.message,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "error desconocido";
     return Response.json({
       success: false,
-      error: `No se pudo conectar: ${e.message || "error desconocido"}`,
+      error: `No se pudo conectar: ${msg}`,
     });
   }
 }

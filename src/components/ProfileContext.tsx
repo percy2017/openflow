@@ -23,7 +23,7 @@ type Message = {
   }> | null;
   tokens?: number;
   responseTime?: number;
-  files?: Array<{ name: string; url: string; type: string }>;
+  files?: Array<{ name: string; url: string; type: string }> | null;
 };
 
 type ProfileContextType = {
@@ -31,7 +31,7 @@ type ProfileContextType = {
   setProfile: (profile: ProfileData) => void;
   updateTokens: (tokens: number) => void;
   messages: Message[];
-  setMessages: (messages: Message[]) => void;
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   clearMessages: () => void;
 };
 

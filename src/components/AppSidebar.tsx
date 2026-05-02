@@ -10,8 +10,6 @@ import { Dialog } from "@base-ui/react/dialog";
 import {
   Crown,
   Loader2,
-  MessageSquare,
-  ChevronDown,
   ChevronUp,
   Save,
   Pencil,
@@ -42,21 +40,9 @@ type PlanData = {
 
 const VERSION = "v0.1.0";
 
-function SectionDivider({ label }: { label: string }) {
-  return (
-    <div className="flex items-center gap-3">
-      <span className="text-[10px] font-semibold text-sidebar-foreground/40 uppercase tracking-[0.15em]">{label}</span>
-      <div className="flex-1 h-px bg-sidebar-border" />
-    </div>
-  );
-}
-
 export function AppSidebar() {
-  const { profile, setProfile, updateTokens, clearMessages, messages } = useProfile();
-  const [profileLoading, setProfileLoading] = useState(false);
-  const [systemPrompt, setSystemPrompt] = useState("");
-  const [systemPromptOpen, setSystemPromptOpen] = useState(false);
-  const [apiKeyOpen, setApiKeyOpen] = useState(false);
+  const { profile, setProfile, clearMessages } = useProfile();
+  const [profileLoading, setProfileLoading] = useState(true);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editForm, setEditForm] = useState({ name: "", email: "", phone: "" });
   const [confirmEditOpen, setConfirmEditOpen] = useState(false);
@@ -72,7 +58,6 @@ export function AppSidebar() {
     const headers: HeadersInit = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    setProfileLoading(true);
     fetch("/api/profile", { headers })
       .then((r) => {
         if (!r.ok) {
@@ -93,14 +78,7 @@ export function AppSidebar() {
         window.location.href = "/login";
       });
 
-    const saved = localStorage.getItem("systemPrompt");
-    if (saved) setSystemPrompt(saved);
-  }, []);
-
-  const handleSystemPromptChange = (value: string) => {
-    setSystemPrompt(value);
-    localStorage.setItem("systemPrompt", value);
-  };
+  }, [setProfile]);
 
   const handleOpenEdit = () => {
     if (profile) {

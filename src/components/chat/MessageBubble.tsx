@@ -45,6 +45,7 @@ function UserBubble({ message }: { message: Message }) {
           <div className="mb-2 flex flex-wrap gap-2">
             {message.files.map((file, i) => {
               const fileUrl = file.url?.startsWith("http") ? file.url : `${OMNIA_BASE}${file.url}`;
+              // eslint-disable-next-line @next/next/no-img-element
               return <img key={i} src={fileUrl} alt={file.name} className="max-w-[200px] rounded-lg" />;
             })}
           </div>
@@ -81,7 +82,10 @@ function AssistantBubble({ message }: { message: Message }) {
   const [speaking, setSpeaking] = useState(false);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
+  const isSpeechSupported = typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+
   const speak = () => {
+    if (!isSpeechSupported) return;
     if (speaking) {
       speechSynthesis.cancel();
       setSpeaking(false);
@@ -118,7 +122,11 @@ function AssistantBubble({ message }: { message: Message }) {
   };
 
   useEffect(() => {
-    return () => speechSynthesis.cancel();
+    return () => {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        speechSynthesis.cancel();
+      }
+    };
   }, [message.id]);
 
   return (

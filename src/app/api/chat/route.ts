@@ -8,7 +8,8 @@ export async function POST(req: Request) {
 
   const { messages, integrations } = await req.json();
 
-  const body: any = { messages };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const body: Record<string, any> = { messages };
   if (integrations) {
     body.integrations = integrations;
   }

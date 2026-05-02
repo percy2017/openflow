@@ -3,7 +3,7 @@
 import { SidebarHeader, SidebarContent } from "@/components/ui/sidebar";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { useState, useEffect } from "react";
-import { Plug, Globe, Key, Lock, CheckCircle, Loader2, ExternalLink, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, X, MessageSquare, Server } from "lucide-react";
+import { Plug, Globe, Key, Lock, CheckCircle, Loader2, ExternalLink, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, X, MessageSquare, Server, MessageCircle, Hash } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { MarkdownEditor } from "@/components/MarkdownEditor";
@@ -19,10 +19,17 @@ type EvolutionConfig = {
   token: string;
 };
 
+type ChatwootConfig = {
+  baseUrl: string;
+  token: string;
+  accountId: string;
+};
+
 type IntegrationsData = {
   enabled: string[];
   woocommerce?: WooConfig;
   evolution?: EvolutionConfig;
+  chatwoot?: ChatwootConfig;
 };
 
 const INTEGRATION_KEY = "integrations";
@@ -72,16 +79,20 @@ function IntegrationCard({ title, icon, isConnected, isEnabled, onToggle, childr
               </span>
             )}
           </div>
-          <button
+          <div
+            role="button"
+            tabIndex={0}
             onClick={(e) => {
               e.stopPropagation();
               onToggle();
             }}
-            className={`transition-colors ${isEnabled ? "text-blue-500" : "text-sidebar-foreground/30"}`}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); onToggle(); } }}
+            className={`cursor-pointer transition-colors ${isEnabled ? "text-blue-500" : "text-sidebar-foreground/30"}`}
             title={isEnabled ? "Desactivar" : "Activar"}
+            aria-label={isEnabled ? "Desactivar" : "Activar"}
           >
             {isEnabled ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
-          </button>
+          </div>
         </CollapsibleTrigger>
         <CollapsibleContent>
           <div className="p-3 space-y-3">
@@ -94,30 +105,17 @@ function IntegrationCard({ title, icon, isConnected, isEnabled, onToggle, childr
 }
 
 export function IntegrationsSidebar({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
-  const [data, setData] = useState<IntegrationsData>({ enabled: [] });
-  const [wcForm, setWcForm] = useState<WooConfig>({ siteUrl: "", consumerKey: "", consumerSecret: "" });
-  const [evForm, setEvForm] = useState<EvolutionConfig>({ url: "", token: "" });
+  const initialData = typeof window !== "undefined" ? loadData() : { enabled: [] } as IntegrationsData;
+  const [data, setData] = useState<IntegrationsData>(initialData);
+  const [wcForm, setWcForm] = useState<WooConfig>(initialData.woocommerce || { siteUrl: "", consumerKey: "", consumerSecret: "" });
+  const [evForm, setEvForm] = useState<EvolutionConfig>(initialData.evolution || { url: "", token: "" });
+  const [cwForm, setCwForm] = useState<ChatwootConfig>(initialData.chatwoot || { baseUrl: "", token: "", accountId: "" });
   const [testing, setTesting] = useState(false);
-  const [wcConnected, setWcConnected] = useState(false);
-  const [evConnected, setEvConnected] = useState(false);
-  const [systemPrompt, setSystemPrompt] = useState("");
+  const [wcConnected, setWcConnected] = useState(!!initialData.woocommerce);
+  const [evConnected, setEvConnected] = useState(!!initialData.evolution);
+  const [cwConnected, setCwConnected] = useState(!!initialData.chatwoot);
+  const [systemPrompt, setSystemPrompt] = useState(typeof window !== "undefined" ? (localStorage.getItem("systemPrompt") || "") : "");
   const [systemPromptOpen, setSystemPromptOpen] = useState(true);
-
-  useEffect(() => {
-    if (!open) return;
-    const d = loadData();
-    setData(d);
-    if (d.woocommerce) {
-      setWcForm(d.woocommerce);
-      setWcConnected(true);
-    }
-    if (d.evolution) {
-      setEvForm(d.evolution);
-      setEvConnected(true);
-    }
-    const saved = localStorage.getItem("systemPrompt");
-    if (saved) setSystemPrompt(saved);
-  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -135,6 +133,7 @@ export function IntegrationsSidebar({ open, onOpenChange }: { open: boolean; onO
 
   const wcEnabled = data.enabled.includes("woocommerce");
   const evEnabled = data.enabled.includes("evolution");
+  const cwEnabled = data.enabled.includes("chatwoot");
 
   const toggleEnabled = (key: string) => {
     const updated = { ...data };
@@ -237,6 +236,52 @@ export function IntegrationsSidebar({ open, onOpenChange }: { open: boolean; onO
     setEvConnected(false);
     setEvForm({ url: "", token: "" });
     toast.success("Evolution API desconectada");
+  };
+
+  const handleCwConnect = async () => {
+    if (!cwForm.baseUrl || !cwForm.token || !cwForm.accountId) {
+      toast.error("Completa todos los campos");
+      return;
+    }
+
+    setTesting(true);
+    try {
+      const res = await fetch("/api/integrations/chatwoot/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cwForm),
+      });
+      const result = await res.json();
+      if (result.success) {
+        const updated: IntegrationsData = {
+          ...data,
+          chatwoot: cwForm,
+          enabled: data.enabled.includes("chatwoot") ? data.enabled : [...data.enabled, "chatwoot"],
+        };
+        saveData(updated);
+        setData(updated);
+        setCwConnected(true);
+        toast.success("Chatwoot conectado exitosamente");
+      } else {
+        toast.error(result.error || "Error de conexión");
+      }
+    } catch {
+      toast.error("No se pudo conectar a Chatwoot");
+    }
+    setTesting(false);
+  };
+
+  const handleCwDisconnect = () => {
+    const updated: IntegrationsData = {
+      ...data,
+      chatwoot: undefined,
+      enabled: data.enabled.filter((k) => k !== "chatwoot"),
+    };
+    saveData(updated);
+    setData(updated);
+    setCwConnected(false);
+    setCwForm({ baseUrl: "", token: "", accountId: "" });
+    toast.success("Chatwoot desconectado");
   };
 
   return (
@@ -435,6 +480,84 @@ export function IntegrationsSidebar({ open, onOpenChange }: { open: boolean; onO
               ) : (
                 <button
                   onClick={handleEvConnect}
+                  disabled={testing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500 text-white text-xs font-medium hover:bg-blue-600 transition-colors disabled:opacity-50"
+                >
+                  {testing ? (
+                    <><Loader2 className="w-3 h-3 animate-spin" /> Probando...</>
+                  ) : (
+                    <><CheckCircle className="w-3 h-3" /> Conectar</>
+                  )}
+                </button>
+              )}
+            </div>
+          </IntegrationCard>
+
+          {/* Chatwoot */}
+          <IntegrationCard
+            title="Chatwoot"
+            icon={<MessageCircle className="w-4 h-4 text-cyan-500 shrink-0" />}
+            isConnected={cwConnected}
+            isEnabled={cwEnabled}
+            onToggle={() => toggleEnabled("chatwoot")}
+          >
+            <div className="space-y-2">
+              <label className="flex items-center gap-1.5 text-xs text-sidebar-foreground/60">
+                <Globe className="w-3 h-3" />
+                URL de instancia
+              </label>
+              <input
+                value={cwForm.baseUrl}
+                onChange={(e) => setCwForm({ ...cwForm, baseUrl: e.target.value })}
+                placeholder="https://app.chatwoot.com"
+                disabled={testing}
+                className="w-full bg-muted border border-input rounded-lg px-3 py-2 text-sm text-sidebar-foreground placeholder:text-sidebar-foreground/40 focus:outline-none focus:border-ring transition-colors font-mono"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="flex items-center gap-1.5 text-xs text-sidebar-foreground/60">
+                <Key className="w-3 h-3" />
+                API Access Token
+              </label>
+              <input
+                value={cwForm.token}
+                onChange={(e) => setCwForm({ ...cwForm, token: e.target.value })}
+                placeholder="tu-access-token"
+                type="password"
+                disabled={testing}
+                className="w-full bg-muted border border-input rounded-lg px-3 py-2 text-sm text-sidebar-foreground placeholder:text-sidebar-foreground/40 focus:outline-none focus:border-ring transition-colors font-mono"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="flex items-center gap-1.5 text-xs text-sidebar-foreground/60">
+                <Hash className="w-3 h-3" />
+                Account ID
+              </label>
+              <input
+                value={cwForm.accountId}
+                onChange={(e) => setCwForm({ ...cwForm, accountId: e.target.value })}
+                placeholder="1"
+                disabled={testing}
+                className="w-full bg-muted border border-input rounded-lg px-3 py-2 text-sm text-sidebar-foreground placeholder:text-sidebar-foreground/40 focus:outline-none focus:border-ring transition-colors font-mono"
+              />
+            </div>
+            <div className="flex items-center gap-2 pt-1">
+              {cwConnected ? (
+                <>
+                  <div className="flex items-center gap-1.5 text-xs text-green-500 bg-green-500/10 px-2.5 py-1.5 rounded-lg">
+                    <CheckCircle className="w-3 h-3" />
+                    Conectado
+                  </div>
+                  <button
+                    onClick={handleCwDisconnect}
+                    className="text-xs text-destructive hover:bg-destructive/10 px-2.5 py-1.5 rounded-lg transition-colors"
+                  >
+                    Desconectar
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={handleCwConnect}
                   disabled={testing}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500 text-white text-xs font-medium hover:bg-blue-600 transition-colors disabled:opacity-50"
                 >

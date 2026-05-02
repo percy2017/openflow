@@ -1,15 +1,17 @@
 export async function POST(req: Request) {
-  const { siteUrl, consumerKey, consumerSecret } = await req.json();
+  const { baseUrl, token, accountId } = await req.json();
 
-  if (!siteUrl || !consumerKey || !consumerSecret) {
+  if (!baseUrl || !token || !accountId) {
     return Response.json({ success: false, error: "Faltan campos requeridos" }, { status: 400 });
   }
 
   try {
-    const url = siteUrl.replace(/\/$/, "");
-    const res = await fetch(`${url}/wp-json/wc/v3/system_status`, {
+    const cleanUrl = baseUrl.replace(/\/$/, "");
+    const res = await fetch(`${cleanUrl}/api/v1/accounts/${accountId}/inboxes`, {
+      method: "GET",
       headers: {
-        Authorization: `Basic ${btoa(`${consumerKey}:${consumerSecret}`)}`,
+        "api_access_token": token,
+        "Content-Type": "application/json",
       },
     });
 
@@ -17,7 +19,9 @@ export async function POST(req: Request) {
       const text = await res.text();
       return Response.json({
         success: false,
-        error: res.status === 401 ? "Credenciales inválidas" : `Error HTTP ${res.status}: ${text.slice(0, 200)}`,
+        error: res.status === 401 || res.status === 403
+          ? "Token o Account ID inválido"
+          : `Error HTTP ${res.status}: ${text.slice(0, 200)}`,
       });
     }
 

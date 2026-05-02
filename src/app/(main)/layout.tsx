@@ -5,7 +5,7 @@ import { UsageHeader } from "@/components/UsageHeader";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { IntegrationsSidebar } from "@/components/IntegrationsSidebar";
-import { Toaster, toast } from "sonner";
+import { toast } from "sonner";
 import { AuthChecker } from "@/components/AuthChecker";
 import { ProfileProvider } from "@/components/ProfileContext";
 import { Button } from "@/components/ui/button";
