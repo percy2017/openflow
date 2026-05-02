@@ -64,11 +64,17 @@ export function ChatClient() {
       return null;
     }
     if (Array.isArray(m.files)) {
-      return m.files.filter((f): f is string => typeof f === "string").map((f) => {
-        const nameMatch = f.match(/name='([^']+)'/);
-        const urlMatch = f.match(/url='([^']+)'/);
-        const typeMatch = f.match(/type='([^']+)'/);
-        if (nameMatch && urlMatch && typeMatch) return { name: nameMatch[1], url: urlMatch[1], type: typeMatch[1] };
+      return m.files.map((f: RawMessage | string) => {
+        if (typeof f === "string") {
+          const nameMatch = f.match(/name='([^']+)'/);
+          const urlMatch = f.match(/url='([^']+)'/);
+          const typeMatch = f.match(/type='([^']+)'/);
+          if (nameMatch && urlMatch && typeMatch) return { name: nameMatch[1], url: urlMatch[1], type: typeMatch[1] };
+          return null;
+        }
+        if (f && typeof f === "object" && f.url) {
+          return { name: f.name || "", url: f.url, type: f.type || "" };
+        }
         return null;
       }).filter((f): f is { name: string; url: string; type: string } => f !== null);
     }

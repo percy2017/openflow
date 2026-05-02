@@ -1,24 +1,34 @@
 # OpenFlow
 
-OpenFlow es una consola de agentes inteligentes impulsada por IA. Conecta con tus herramientas favoritas y automatiza tu negocio a través de un chat conversacional potenciado por Omnia Gateway.
+OpenFlow es una consola de agentes inteligentes impulsada por IA. Conecta con tus herramientas favoritas (WooCommerce, Evolution API, Chatwoot) y automatiza tu negocio a través de un chat conversacional potenciado por Omnia Gateway.
 
 ## Características
 
-- **Chat inteligente** con soporte para markdown, imágenes y audio
-- **Integraciones** con WooCommerce, WordPress y Evolution API (más próximamente)
-- **Editor System Prompt** con formato markdown y toolbar
+- **Chat inteligente** con soporte para markdown, imágenes y TTS
+- **Integraciones** con WooCommerce, Evolution API y Chatwoot
+- **System Prompt** personalizable por usuario
 - **Gestión de suscripción** con planes y tokens
 - **Autenticación** multi-usuario con registro y login
 - **Modo oscuro/claro**
-- **Descarga de historial** en JSON
+- **Historial** de conversación persistente en Omnia
 
 ## Tecnologías
 
-- **Frontend:** Next.js 15 (App Router), React 19, Tailwind CSS 4
-- **UI:** Shadcn/ui, Lucide icons, Base UI
-- **Markdown:** react-markdown, remark-gfm
+- **Frontend:** Next.js 15 (App Router), React 19, TypeScript 5, Tailwind CSS 4
+- **UI:** shadcn/ui (base-nova), Lucide icons, Base UI, @assistant-ui/react
 - **Backend:** Omnia Gateway API (proxy via Next.js API routes)
-- **Audio:** Web Speech API
+- **Audio:** Web Speech API (navegador)
+- **Producción:** pm2
+
+## Integraciones
+
+| Integración | Configuración |
+|-------------|---------------|
+| WooCommerce | URL del sitio, Consumer Key, Consumer Secret |
+| Evolution API | URL del servidor, Token |
+| Chatwoot | URL de instancia, API Access Token, Account ID |
+
+Las integraciones se almacenan en localStorage y se envían a Omnia como parte del body del chat.
 
 ## Requisitos
 
@@ -30,7 +40,7 @@ OpenFlow es una consola de agentes inteligentes impulsada por IA. Conecta con tu
 
 ```bash
 # Clonar el repositorio
-git clone https://github.com/tu-usuario/openflow.git
+git clone https://github.com/percy2017/openflow.git
 cd openflow
 
 # Instalar dependencias
@@ -44,38 +54,52 @@ cp .env.example .env.local
 
 # Iniciar en desarrollo
 npm run dev
+```
 
-# O en producción con pm2
-pm2 start npm --name openflow -- run dev -- --port 3001
+## Producción con pm2
+
+```bash
+# Construir
+npm run build
+
+# Iniciar
+pm2 start ecosystem.config.cjs
+
+# Guardar para que reinicie automáticamente
+pm2 save
+pm2 startup
 ```
 
 ## Variables de Entorno
 
-| Variable | Descripción |
-|----------|-------------|
-| `OMNIA_BASE_URL` | URL base de la API de Omnia (server-side) |
-| `NEXT_PUBLIC_OMNIA_BASE_URL` | URL base de la API de Omnia (client-side) |
+| Variable | Ámbito | Descripción |
+|----------|--------|-------------|
+| `OMNIA_BASE_URL` | Servidor | URL base de la API de Omnia |
+| `NEXT_PUBLIC_OMNIA_BASE_URL` | Cliente | URL base de la API de Omnia (para imágenes) |
 
 ## Estructura del Proyecto
 
 ```
 src/
 ├── app/
-│   ├── (auth)/login/         # Página de login/registro
+│   ├── (auth)/login/            # Página de login/registro
 │   ├── (main)/
-│   │   ├── layout.tsx        # Layout principal con header y sidebars
-│   │   └── chat/             # Página de chat
-│   └── api/                  # API routes (proxy a Omnia)
+│   │   ├── layout.tsx           # Layout principal con header y sidebars
+│   │   └── chat/                # Página de chat
+│   └── api/                     # API routes (proxy a Omnia)
 ├── components/
-│   ├── ChatClient.tsx        # Lógica principal del chat
-│   ├── AppSidebar.tsx        # Sidebar izquierdo (perfil, plan, API key)
-│   ├── IntegrationsSidebar.tsx # Sidebar derecho (integraciones)
-│   ├── MarkdownEditor.tsx    # Editor markdown con toolbar
-│   ├── MarkdownRenderer.tsx  # Renderizador markdown centralizado
-│   ├── UsageHeader.tsx       # Barra de uso de tokens en header
-│   ├── chat/                 # Sub-componentes del chat
-│   └── ui/                   # Componentes Shadcn/ui
-└── lib/auth.ts               # Utilidades de autenticación
+│   ├── ChatClient.tsx           # Lógica principal del chat
+│   ├── IntegrationsSidebar.tsx  # Sidebar de integraciones
+│   ├── AppSidebar.tsx           # Sidebar izquierdo (perfil, plan)
+│   ├── MarkdownEditor.tsx       # Editor markdown con toolbar
+│   ├── MarkdownRenderer.tsx     # Renderizador markdown
+│   ├── UsageHeader.tsx          # Barra de uso de tokens
+│   ├── chat/                    # Sub-componentes del chat
+│   └── ui/                      # Componentes shadcn/ui
+├── lib/
+│   └── auth.ts                  # Utilidades de autenticación
+└── docs/
+    └── integrations-json-format.md  # Documentación de integraciones
 ```
 
 ## API Endpoints
@@ -91,6 +115,7 @@ src/
 | `/api/plans` | GET | Listar planes |
 | `/api/integrations/woocommerce/test` | POST | Probar conexión WooCommerce |
 | `/api/integrations/evolution/test` | POST | Probar conexión Evolution API |
+| `/api/integrations/chatwoot/test` | POST | Probar conexión Chatwoot |
 
 ## Licencia
 

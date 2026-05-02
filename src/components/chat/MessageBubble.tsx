@@ -81,8 +81,17 @@ function ThinkingBubble({ message }: { message: Message }) {
 function AssistantBubble({ message }: { message: Message }) {
   const [speaking, setSpeaking] = useState(false);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const voicesLoadedRef = useRef(false);
 
   const isSpeechSupported = typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+
+  useEffect(() => {
+    if (!isSpeechSupported) return;
+    const check = () => { if (speechSynthesis.getVoices().length > 0) voicesLoadedRef.current = true; };
+    check();
+    speechSynthesis.addEventListener("voiceschanged", check);
+    return () => speechSynthesis.removeEventListener("voiceschanged", check);
+  }, [isSpeechSupported]);
 
   const speak = () => {
     if (!isSpeechSupported) return;
@@ -91,34 +100,30 @@ function AssistantBubble({ message }: { message: Message }) {
       setSpeaking(false);
       return;
     }
-    const text = message.content.replace(/[#*_`~\[\]]/g, "").replace(/\n/g, " ");
+
+    const text = message.content.replace(/[#*_`~\[\]]/g, "").replace(/\n/g, " ").trim();
+    if (!text) return;
+
+    speechSynthesis.cancel();
+
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 1.1;
     utterance.pitch = 0.9;
 
-    const loadVoice = () => {
-      const voices = speechSynthesis.getVoices();
-      const spanishVoice =
-        voices.find((v) => v.lang.startsWith("es") && !v.name.toLowerCase().includes("whisper")) ||
-        voices.find((v) => v.lang.includes("es") && !v.name.toLowerCase().includes("whisper")) ||
-        voices.find((v) => v.lang.startsWith("es")) ||
-        voices[0];
-
-      if (spanishVoice) utterance.voice = spanishVoice;
-
-      utterance.onend = () => setSpeaking(false);
-      utterance.onerror = () => setSpeaking(false);
-      utteranceRef.current = utterance;
-      speechSynthesis.speak(utterance);
-      setSpeaking(true);
-    };
-
     const voices = speechSynthesis.getVoices();
-    if (voices.length > 0) {
-      loadVoice();
-    } else {
-      speechSynthesis.onvoiceschanged = () => loadVoice();
-    }
+    const spanishVoice =
+      voices.find((v) => v.lang.startsWith("es") && !v.name.toLowerCase().includes("whisper")) ||
+      voices.find((v) => v.lang.includes("es") && !v.name.toLowerCase().includes("whisper")) ||
+      voices.find((v) => v.lang.startsWith("es")) ||
+      voices[0];
+
+    if (spanishVoice) utterance.voice = spanishVoice;
+
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => setSpeaking(false);
+    utteranceRef.current = utterance;
+    speechSynthesis.speak(utterance);
+    setSpeaking(true);
   };
 
   useEffect(() => {
