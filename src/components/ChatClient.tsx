@@ -4,14 +4,16 @@ import { useLocalRuntime } from "@assistant-ui/react";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { Bot, Loader2 } from "lucide-react";
 import type { ChatModelAdapter } from "@assistant-ui/core";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { loadToken, getToken } from "@/lib/auth";
 import { useProfile } from "@/components/ProfileContext";
 import { toast } from "sonner";
 import { MessageBubble } from "./chat/MessageBubble";
 import { ChatInput } from "./chat/ChatInput";
+import { QuickPrompts } from "./chat/QuickPrompts";
 import type { Message, AttachedFile } from "./chat/types";
-import { getSetting, getIntegrations } from "@/lib/settings";
+import { getIntegrations } from "@/lib/settings";
+import type { PromptsData } from "@/lib/prompts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type RawMessage = Record<string, any>;
@@ -54,6 +56,8 @@ export function ChatClient() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [elapsed, setElapsed] = useState(0);
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [prompts, setPrompts] = useState<PromptsData | null>(null);
+  const [enabledIntegrations, setEnabledIntegrations] = useState<string[]>([]);
 
   const parseFiles = (m: RawMessage): Message["files"] => {
     if (!m.files) return null;
@@ -73,9 +77,7 @@ export function ChatClient() {
           if (nameMatch && urlMatch && typeMatch) return { name: nameMatch[1], url: urlMatch[1], type: typeMatch[1] };
           return null;
         }
-        if (f && typeof f === "object" && f.url) {
-          return { name: f.name || "", url: f.url, type: f.type || "" };
-        }
+        if (f && typeof f === "object" && f.url) return { name: f.name || "", url: f.url, type: f.type || "" };
         return null;
       }).filter((f): f is { name: string; url: string; type: string } => f !== null);
     }
@@ -91,7 +93,7 @@ export function ChatClient() {
         if (m.thinking) msgs.push({ id: `msg-${msgs.length}-thinking`, role: "thinking", content: m.thinking });
         if (m.tool_calls && m.tool_calls.length > 0) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (m.tool_calls as any[]).forEach((tc: any, i: number) => {
+          (m.tool_calls as { id: string; function: { name: string; arguments: string } }[]).forEach((tc, i) => {
             msgs.push({ id: `msg-${msgs.length}-tool-${i}`, role: "tool", content: "", toolName: tc.function?.name, toolCalls: [tc] });
           });
         }
@@ -115,14 +117,25 @@ export function ChatClient() {
     }
   };
 
+  const loadChatData = useCallback(async () => {
+    await loadToken();
+    const token = getToken();
+    const headers: HeadersInit = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const [promptsRes, integrationsData] = await Promise.all([
+      fetch("/api/prompts").then((r) => r.json()).catch(() => null),
+      getIntegrations<{ enabled: string[] }>(),
+    ]);
+    setPrompts(promptsRes);
+    setEnabledIntegrations(integrationsData.enabled || []);
+    await loadConversation(headers);
+    setLoading(false);
+  }, []);
+
   useEffect(() => {
-    loadToken().then(() => {
-      const token = getToken();
-      const headers: HeadersInit = {};
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-      loadConversation(headers).finally(() => setLoading(false));
-    });
-  }, [setMessages]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadChatData();
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -201,15 +214,20 @@ export function ChatClient() {
     setElapsed(0);
     elapsedRef.current = setInterval(() => setElapsed((prev) => prev + 1), 1000);
 
-    const [systemPrompt, integrationsData] = await Promise.all([
-      getSetting("systemPrompt"),
-      getIntegrations<Record<string, unknown>>(),
-    ]);
+    const integrationsData = await getIntegrations<Record<string, unknown>>();
+
+    const systemPrompts: string[] = [];
+    if (prompts?.general?.systemPrompt) systemPrompts.push(prompts.general.systemPrompt);
+    for (const key of enabledIntegrations) {
+      const entry = prompts?.[key as keyof PromptsData] as { systemPrompt?: string } | undefined;
+      if (entry?.systemPrompt) systemPrompts.push(entry.systemPrompt);
+    }
+    const mergedSystemPrompt = systemPrompts.join("\n\n---\n\n");
 
     const msgToSend: Record<string, unknown> = { role: "user", content: messageContent };
     if (attachedFiles.length > 0) msgToSend.files = attachedFiles;
     const messagesToSend = [
-      ...(systemPrompt ? [{ role: "system" as const, content: systemPrompt }] : []),
+      ...(mergedSystemPrompt ? [{ role: "system" as const, content: mergedSystemPrompt }] : []),
       msgToSend,
     ];
 
@@ -286,18 +304,6 @@ export function ChatClient() {
                   </div>
                   <h2 className="text-2xl font-bold text-foreground mb-2">OpenFlow Agents</h2>
                   <p className="text-muted-foreground text-sm mb-5 leading-relaxed">Consola de agentes inteligentes. Escribe un mensaje para empezar.</p>
-                  <div className="flex flex-col items-center gap-2">
-                    <div className="flex flex-wrap justify-center gap-2">
-                      {["¿Quién eres y qué puedes hacer?", "¿Qué herramientas tienes disponibles?", "¿Qué hora y fecha tienes?"].map((q) => (
-                        <button key={q} onClick={() => setInput(q)} className="px-4 py-2 rounded-xl bg-muted hover:bg-muted/80 border border-border text-xs text-sidebar-foreground transition-all hover:border-blue-500/30 hover:text-blue-500">{q}</button>
-                      ))}
-                    </div>
-                    <div className="flex flex-wrap justify-center gap-2 pt-1">
-                      {["📦 ¿Cuántos pedidos tengo?", "📱 ¿Qué instancias de Evolution tengo?"].map((q) => (
-                        <button key={q} onClick={() => setInput(q)} className="px-4 py-2 rounded-xl bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/20 text-xs text-blue-500 transition-all hover:border-blue-500/40">{q}</button>
-                      ))}
-                    </div>
-                  </div>
                 </div>
               </div>
             ) : (
@@ -322,6 +328,7 @@ export function ChatClient() {
                 <div ref={bottomRef} />
               </div>
             )}
+            <QuickPrompts prompts={prompts} enabledIntegrations={enabledIntegrations} onSelect={(q) => { setInput(q); }} />
           </div>
         </div>
 
