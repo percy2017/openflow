@@ -9,19 +9,21 @@
 - **pm2** for production process management
 
 ## Architecture
-- **No local DB.** All data (users, plans, chat history) lives in **Omnia API** at `http://217.216.43.75:9000`
-- Frontend is a proxy-only layer. Auth via `Authorization: Bearer sk-omnia-...` from localStorage.
+- **No local DB.** User data, plans, chat history lives in **Omnia API** at `http://217.216.43.75:9000`
+- Frontend is a proxy-only layer. Auth via `Authorization: Bearer sk-omnia-...` from in-memory cache.
+- Settings (api_key, systemPrompt, theme) and integration credentials stored in **SQLite** (`.data/store.db`) via `better-sqlite3`.
 - Chat sends current message + integrations — Omnia manages history server-side.
 - **After each chat message, the frontend refetches `GET /v1/conversation`** to rebuild the full message list (does NOT rely on `data.history` from the chat response).
 - Server routes use `OMNIA_BASE_URL`, client uses `NEXT_PUBLIC_OMNIA_BASE_URL` (both in `.env.local`, gitignored)
-- Integrations are stored entirely in **localStorage** (key: `integrations`), never in Omnia.
+- Integrations, api_key, systemPrompt, and theme are stored in **SQLite** (`.data/store.db`) via API routes (`/api/settings`, `/api/integrations`).
 - Production runs via **pm2** on port 3000 (config: `ecosystem.config.cjs`).
 
 ## Critical Conventions
 - **Dialogs**: Always `@base-ui/react/dialog` primitives, never shadcn dialog
 - **Auth in server components**: Never access localStorage. Use `AuthChecker` client component instead.
-- **localStorage keys**: `api_key`, `systemPrompt`, `integrations`, `theme`
-- **Integrations localStorage format**:
+- **No localStorage**. All settings (api_key, systemPrompt, theme) and integrations (credentials) stored in **SQLite** via `better-sqlite3` at `.data/store.db`. Client reads via API routes (`/api/settings`, `/api/integrations`).
+- **Navigation**: Always `router.push()`/`router.replace()` from `next/navigation`, never `window.location.href`.
+- **Integrations JSON format stored in SQLite**:
   ```json
   {
     "enabled": ["woocommerce", "evolution", "chatwoot"],
@@ -65,7 +67,7 @@ pm2 logs openflow                 # view logs
 ```
 
 ## Notable
-- Dev origins: `allowedDevOrigins: ["openflow.test"]` in `next.config.ts`
+- Dev origins: `allowedDevOrigins: ["openflow.local"]` in `next.config.ts`
 - No test suite configured
 - Images: max 5MB, jpg/png/gif/webp only, sent as base64 (no prefix) in `files` array
 - Production via **pm2** on port 3000 (no Apache proxy)

@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ["openflow.test"],
+  allowedDevOrigins: ["openflow.local"],
   devIndicators: false,
 };
 

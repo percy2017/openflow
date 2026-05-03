@@ -6,11 +6,13 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { IntegrationsSidebar } from "@/components/IntegrationsSidebar";
 import { toast } from "sonner";
+import { clearToken, getToken } from "@/lib/auth";
 import { AuthChecker } from "@/components/AuthChecker";
 import { ProfileProvider } from "@/components/ProfileContext";
 import { Button } from "@/components/ui/button";
 import { Plug, LogOut, Trash2, Download, XCircle } from "lucide-react";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Dialog } from "@base-ui/react/dialog";
 import {
   SidebarProvider,
@@ -23,19 +25,24 @@ export default function MainLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const router = useRouter();
   const [integrationsOpen, setIntegrationsOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const handleLogout = () => {
-    localStorage.removeItem("api_key");
-    localStorage.removeItem("systemPrompt");
-    localStorage.removeItem("integrations");
-    window.location.href = "/";
+    clearToken();
+    fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "systemPrompt", value: "" }),
+    }).catch(() => {});
+    fetch("/api/integrations", { method: "DELETE" }).catch(() => {});
+    router.push("/");
   };
 
   const handleDownload = async () => {
-    const token = localStorage.getItem("api_key");
+    const token = getToken();
     const headers: HeadersInit = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
@@ -57,12 +64,12 @@ export default function MainLayout({
 
   const handleClear = async () => {
     setShowClearConfirm(false);
-    const token = localStorage.getItem("api_key");
+    const token = getToken();
     const headers: HeadersInit = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
     toast.success("Historial limpiado");
     await fetch("/api/conversation", { method: "DELETE", headers });
-    window.location.reload();
+    router.refresh();
   };
 
   return (

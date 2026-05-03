@@ -7,6 +7,7 @@ import { Plug, Globe, Key, Lock, CheckCircle, Loader2, ExternalLink, ToggleLeft,
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { MarkdownEditor } from "@/components/MarkdownEditor";
+import { getSetting, setSetting, getIntegrations, setIntegrations } from "@/lib/settings";
 
 type WooConfig = {
   siteUrl: string;
@@ -31,21 +32,6 @@ type IntegrationsData = {
   evolution?: EvolutionConfig;
   chatwoot?: ChatwootConfig;
 };
-
-const INTEGRATION_KEY = "integrations";
-
-function loadData(): IntegrationsData {
-  if (typeof window === "undefined") return { enabled: [] };
-  try {
-    return JSON.parse(localStorage.getItem(INTEGRATION_KEY) || '{"enabled":[]}');
-  } catch {
-    return { enabled: [] };
-  }
-}
-
-function saveData(data: IntegrationsData) {
-  localStorage.setItem(INTEGRATION_KEY, JSON.stringify(data));
-}
 
 type IntegrationCardProps = {
   title: string;
@@ -105,17 +91,26 @@ function IntegrationCard({ title, icon, isConnected, isEnabled, onToggle, childr
 }
 
 export function IntegrationsSidebar({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
-  const initialData = typeof window !== "undefined" ? loadData() : { enabled: [] } as IntegrationsData;
-  const [data, setData] = useState<IntegrationsData>(initialData);
-  const [wcForm, setWcForm] = useState<WooConfig>(initialData.woocommerce || { siteUrl: "", consumerKey: "", consumerSecret: "" });
-  const [evForm, setEvForm] = useState<EvolutionConfig>(initialData.evolution || { url: "", token: "" });
-  const [cwForm, setCwForm] = useState<ChatwootConfig>(initialData.chatwoot || { baseUrl: "", token: "", accountId: "" });
+  const [data, setData] = useState<IntegrationsData>({ enabled: [] });
+  const [wcForm, setWcForm] = useState<WooConfig>({ siteUrl: "", consumerKey: "", consumerSecret: "" });
+  const [evForm, setEvForm] = useState<EvolutionConfig>({ url: "", token: "" });
+  const [cwForm, setCwForm] = useState<ChatwootConfig>({ baseUrl: "", token: "", accountId: "" });
   const [testing, setTesting] = useState(false);
-  const [wcConnected, setWcConnected] = useState(!!initialData.woocommerce);
-  const [evConnected, setEvConnected] = useState(!!initialData.evolution);
-  const [cwConnected, setCwConnected] = useState(!!initialData.chatwoot);
-  const [systemPrompt, setSystemPrompt] = useState(typeof window !== "undefined" ? (localStorage.getItem("systemPrompt") || "") : "");
+  const [wcConnected, setWcConnected] = useState(false);
+  const [evConnected, setEvConnected] = useState(false);
+  const [cwConnected, setCwConnected] = useState(false);
+  const [systemPrompt, setSystemPrompt] = useState("");
   const [systemPromptOpen, setSystemPromptOpen] = useState(true);
+
+  useEffect(() => {
+    getIntegrations<IntegrationsData>().then((d) => {
+      setData(d);
+      if (d.woocommerce) { setWcForm(d.woocommerce); setWcConnected(true); }
+      if (d.evolution) { setEvForm(d.evolution); setEvConnected(true); }
+      if (d.chatwoot) { setCwForm(d.chatwoot); setCwConnected(true); }
+    });
+    getSetting("systemPrompt").then((v) => setSystemPrompt(v || ""));
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -126,9 +121,13 @@ export function IntegrationsSidebar({ open, onOpenChange }: { open: boolean; onO
     return () => document.removeEventListener("keydown", handleEsc);
   }, [open, onOpenChange]);
 
+  const saveData = (d: IntegrationsData) => {
+    setIntegrations(d);
+  };
+
   const handleSystemPromptChange = (value: string) => {
     setSystemPrompt(value);
-    localStorage.setItem("systemPrompt", value);
+    setSetting("systemPrompt", value);
   };
 
   const wcEnabled = data.enabled.includes("woocommerce");

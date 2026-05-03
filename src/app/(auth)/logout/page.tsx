@@ -9,7 +9,11 @@ export default function LogoutPage() {
 
   useEffect(() => {
     clearToken();
-    localStorage.removeItem("systemPrompt");
+    fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "systemPrompt", value: "" }),
+    }).catch(() => {});
     router.push("/");
   }, [router]);
 

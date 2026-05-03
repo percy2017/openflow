@@ -25,8 +25,9 @@ import {
   KeyRound,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { clearToken } from "@/lib/auth";
+import { clearToken, loadToken, getToken } from "@/lib/auth";
 import { useProfile } from "@/components/ProfileContext";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -41,6 +42,7 @@ type PlanData = {
 const VERSION = "v0.1.0";
 
 export function AppSidebar() {
+  const router = useRouter();
   const { profile, setProfile, clearMessages } = useProfile();
   const [profileLoading, setProfileLoading] = useState(true);
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -54,30 +56,31 @@ export function AppSidebar() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("api_key");
-    const headers: HeadersInit = {};
-    if (token) headers["Authorization"] = `Bearer ${token}`;
+    loadToken().then(() => {
+      const token = getToken();
+      if (!token) return;
+      const headers: HeadersInit = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    fetch("/api/profile", { headers })
-      .then((r) => {
-        if (!r.ok) {
-          clearToken();
-          window.location.href = "/login";
-          return null;
-        }
-        return r.json();
-      })
-      .then((data) => {
-        if (!data) return;
-        setProfile(data);
-        setEditForm({ name: data.user.name, email: data.user.email, phone: data.user.phone || "" });
-        setProfileLoading(false);
-      })
-      .catch(() => {
-        clearToken();
-        window.location.href = "/login";
-      });
-
+      fetch("/api/profile", { headers })
+        .then((r) => {
+          if (!r.ok) {
+            clearToken();
+            router.replace("/login");
+            return null;
+          }
+          return r.json();
+        })
+        .then((data) => {
+          if (!data) return;
+          setProfile(data);
+          setEditForm({ name: data.user.name, email: data.user.email, phone: data.user.phone || "" });
+          setProfileLoading(false);
+        })
+        .catch(() => {
+          setProfileLoading(false);
+        });
+    });
   }, [setProfile]);
 
   const handleOpenEdit = () => {
@@ -104,7 +107,7 @@ export function AppSidebar() {
   const handleConfirmSave = async () => {
     setConfirmEditOpen(false);
     if (!profile) return;
-    const token = localStorage.getItem("api_key");
+    const token = getToken();
     const headers: HeadersInit = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
@@ -128,7 +131,7 @@ export function AppSidebar() {
 
   const handleDelete = async () => {
     setShowDeleteConfirm(false);
-    const token = localStorage.getItem("api_key");
+    const token = getToken();
     const headers: HeadersInit = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
@@ -157,7 +160,7 @@ export function AppSidebar() {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("api_key")}`,
+          Authorization: `Bearer ${getToken()}`,
         },
         body: JSON.stringify({ plan_id: planId }),
       });
@@ -176,6 +179,7 @@ export function AppSidebar() {
   };
 
   return (
+    <>
     <Dialog.Root>
       <Sidebar>
         <SidebarHeader className="p-4 border-b border-sidebar-border">
@@ -229,11 +233,11 @@ export function AppSidebar() {
                 <div className="flex items-center gap-1.5 text-[11px] text-sidebar-foreground/40">
                   <KeyRound className="w-3 h-3 shrink-0" />
                   <code className="text-[10px] bg-muted px-1.5 py-0.5 rounded truncate text-sidebar-foreground/60 select-all">
-                    {typeof window !== "undefined" ? (localStorage.getItem("api_key")?.slice(0, 20) + "..." || "No disponible") : "No disponible"}
+                    {(getToken()?.slice(0, 20) + "..." || "No disponible")}
                   </code>
                   <button
                     onClick={() => {
-                      const key = localStorage.getItem("api_key");
+                      const key = getToken();
                       if (!key) return;
                       try {
                         const textarea = document.createElement("textarea");
@@ -321,7 +325,8 @@ export function AppSidebar() {
             </div>
           </div>
         </Dialog.Popup>
-      </Dialog.Portal>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       {/* Delete Confirmation Dialog */}
       <Dialog.Root open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
@@ -492,6 +497,6 @@ export function AppSidebar() {
           </Dialog.Popup>
         </Dialog.Portal>
       </Dialog.Root>
-    </Dialog.Root>
+    </>
   );
 }

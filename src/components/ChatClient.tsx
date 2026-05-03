@@ -5,12 +5,13 @@ import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { Bot, Loader2 } from "lucide-react";
 import type { ChatModelAdapter } from "@assistant-ui/core";
 import { useEffect, useState, useRef } from "react";
-import { clearToken } from "@/lib/auth";
+import { loadToken, getToken } from "@/lib/auth";
 import { useProfile } from "@/components/ProfileContext";
 import { toast } from "sonner";
 import { MessageBubble } from "./chat/MessageBubble";
 import { ChatInput } from "./chat/ChatInput";
 import type { Message, AttachedFile } from "./chat/types";
+import { getSetting, getIntegrations } from "@/lib/settings";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type RawMessage = Record<string, any>;
@@ -115,11 +116,12 @@ export function ChatClient() {
   };
 
   useEffect(() => {
-    const token = localStorage.getItem("api_key");
-    const headers: HeadersInit = {};
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-
-    loadConversation(headers).finally(() => setLoading(false));
+    loadToken().then(() => {
+      const token = getToken();
+      const headers: HeadersInit = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      loadConversation(headers).finally(() => setLoading(false));
+    });
   }, [setMessages]);
 
   useEffect(() => {
@@ -199,31 +201,28 @@ export function ChatClient() {
     setElapsed(0);
     elapsedRef.current = setInterval(() => setElapsed((prev) => prev + 1), 1000);
 
-    const systemPrompt = localStorage.getItem("systemPrompt") || "";
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const msgToSend: Record<string, any> = { role: "user", content: messageContent };
+    const [systemPrompt, integrationsData] = await Promise.all([
+      getSetting("systemPrompt"),
+      getIntegrations<Record<string, unknown>>(),
+    ]);
+
+    const msgToSend: Record<string, unknown> = { role: "user", content: messageContent };
     if (attachedFiles.length > 0) msgToSend.files = attachedFiles;
     const messagesToSend = [
       ...(systemPrompt ? [{ role: "system" as const, content: systemPrompt }] : []),
       msgToSend,
     ];
 
-    const integrationsRaw = localStorage.getItem("integrations");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let integrations: Record<string, any> | undefined;
-    if (integrationsRaw) {
-      try {
-        const parsed = JSON.parse(integrationsRaw);
-        const enabled: string[] = parsed.enabled || [];
-        integrations = {};
-        for (const key of enabled) {
-          if (parsed[key]) integrations[key] = parsed[key];
-        }
-        if (Object.keys(integrations).length === 0) integrations = undefined;
-      } catch {}
+    let integrations: Record<string, unknown> | undefined;
+    const raw = integrationsData as Record<string, unknown>;
+    const enabled: string[] = (raw.enabled as string[]) || [];
+    integrations = {};
+    for (const key of enabled) {
+      if (raw[key]) integrations[key] = raw[key];
     }
+    if (Object.keys(integrations).length === 0) integrations = undefined;
 
-    const token = localStorage.getItem("api_key");
+    const token = getToken();
     const headers: HeadersInit = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
@@ -250,11 +249,12 @@ export function ChatClient() {
       let tokensRemaining = null;
       try {
         const profileRes = await fetch("/api/profile", { headers });
-        if (!profileRes.ok) { clearToken(); window.location.href = "/login"; return; }
-        const profileData = await profileRes.json();
-        tokensRemaining = profileData.usage?.tokens_remaining;
-        updateTokens(tokensRemaining);
-      } catch { clearToken(); window.location.href = "/login"; return; }
+        if (profileRes.ok) {
+          const profileData = await profileRes.json();
+          tokensRemaining = profileData.usage?.tokens_remaining;
+          updateTokens(tokensRemaining);
+        }
+      } catch {}
 
       await loadConversation(headers);
       setSending(false);

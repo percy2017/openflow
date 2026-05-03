@@ -16,7 +16,7 @@ OpenFlow es una consola de agentes inteligentes impulsada por IA. Conecta con tu
 
 - **Frontend:** Next.js 15 (App Router), React 19, TypeScript 5, Tailwind CSS 4
 - **UI:** shadcn/ui (base-nova), Lucide icons, Base UI, @assistant-ui/react
-- **Backend:** Omnia Gateway API (proxy via Next.js API routes)
+- **Backend:** SQLite (better-sqlite3) para settings de usuario e integraciones; Omnia Gateway API para datos de usuario, planes e historial
 - **Audio:** Web Speech API (navegador)
 - **Producción:** pm2
 
@@ -28,7 +28,7 @@ OpenFlow es una consola de agentes inteligentes impulsada por IA. Conecta con tu
 | Evolution API | URL del servidor, Token |
 | Chatwoot | URL de instancia, API Access Token, Account ID |
 
-Las integraciones se almacenan en localStorage y se envían a Omnia como parte del body del chat.
+Las integraciones, api_key, systemPrompt y theme se almacenan en **SQLite** (`.data/store.db`) via `better-sqlite3`. El frontend lee/escribe a través de las API routes `/api/settings` e `/api/integrations`. Se envían a Omnia como parte del body del chat.
 
 ## Requisitos
 
@@ -85,6 +85,8 @@ src/
 │   ├── (auth)/login/            # Página de login/registro
 │   ├── (main)/
 │   │   ├── layout.tsx           # Layout principal con header y sidebars
+│   │   ├── loading.tsx          # Loading state (spinner)
+│   │   ├── error.tsx            # Error boundary con reintento
 │   │   └── chat/                # Página de chat
 │   └── api/                     # API routes (proxy a Omnia)
 ├── components/
@@ -97,7 +99,11 @@ src/
 │   ├── chat/                    # Sub-componentes del chat
 │   └── ui/                      # Componentes shadcn/ui
 ├── lib/
-│   └── auth.ts                  # Utilidades de autenticación
+│   ├── auth.ts                  # Utilidades de autenticación (caché en memoria + persistencia SQLite)
+│   ├── db.ts                    # SQLite via better-sqlite3 (.data/store.db)
+│   └── settings.ts              # Helpers cliente para API de settings/integrations
+├── .data/
+│   └── store.db                 # SQLite database (gitignored)
 └── docs/
     └── integrations-json-format.md  # Documentación de integraciones
 ```
@@ -113,6 +119,8 @@ src/
 | `/api/profile` | GET/PUT | Obtener/actualizar perfil |
 | `/api/profile/plan` | PUT | Cambiar plan |
 | `/api/plans` | GET | Listar planes |
+| `/api/settings` | GET/PUT | Leer/guardar settings (api_key, systemPrompt, theme) |
+| `/api/integrations` | GET/PUT/DELETE | Leer/guardar/limpiar integraciones |
 | `/api/integrations/woocommerce/test` | POST | Probar conexión WooCommerce |
 | `/api/integrations/evolution/test` | POST | Probar conexión Evolution API |
 | `/api/integrations/chatwoot/test` | POST | Probar conexión Chatwoot |

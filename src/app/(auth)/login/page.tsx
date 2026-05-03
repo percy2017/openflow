@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Bot, Crown, Loader2, Check, ArrowRight } from "lucide-react";
 import { saveToken } from "@/lib/auth";
 import { toast } from "sonner";
@@ -25,6 +26,7 @@ type CheckEmailResponse = {
 };
 
 export default function LoginPage() {
+  const router = useRouter();
   const [step, setStep] = useState<"email" | "form">("email");
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -86,11 +88,9 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (data.api_key) {
-        saveToken(data.api_key);
+        await saveToken(data.api_key);
         toast.success(existingUser ? "Bienvenido de nuevo" : "Registro exitoso");
-        setTimeout(() => {
-          window.location.href = "/chat";
-        }, 500);
+        router.push("/chat");
       } else {
         toast.error(data.detail || "Error al iniciar");
       }
