@@ -6,11 +6,12 @@ OpenFlow es una consola de agentes inteligentes impulsada por IA. Conecta con tu
 
 - **Chat inteligente** con soporte para markdown, imágenes y TTS
 - **Integraciones** con WooCommerce, Evolution API y Chatwoot
-- **System Prompt** personalizable por usuario
+- **System Prompt** personalizable por tipo (General, WooCommerce, Evolution, Chatwoot) con quick prompts asociados
+- **Prompt activo** seleccionable desde el sidebar de prompts
 - **Gestión de suscripción** con planes y tokens
 - **Autenticación** multi-usuario con registro y login
+- **URL de Omnia configurable** desde el login
 - **Modo oscuro/claro**
-- **Historial** de conversación persistente en Omnia
 
 ## Tecnologías
 
@@ -20,15 +21,19 @@ OpenFlow es una consola de agentes inteligentes impulsada por IA. Conecta con tu
 - **Audio:** Web Speech API (navegador)
 - **Producción:** pm2
 
-## Integraciones
+## Integraciones y Prompts
 
+### Integraciones
 | Integración | Configuración |
 |-------------|---------------|
 | WooCommerce | URL del sitio, Consumer Key, Consumer Secret |
 | Evolution API | URL del servidor, Token |
 | Chatwoot | URL de instancia, API Access Token, Account ID |
 
-Las integraciones, api_key, systemPrompt y theme se almacenan en **SQLite** (`.data/store.db`) via `better-sqlite3`. El frontend lee/escribe a través de las API routes `/api/settings` e `/api/integrations`. Se envían a Omnia como parte del body del chat.
+Las integraciones se almacenan en **SQLite** (`.data/store.db`) via `better-sqlite3`. Se envían a Omnia como parte del body del chat.
+
+### Prompts
+Cada integración tiene su propio **system prompt** y **quick prompts**. El usuario selecciona cuál usar desde el sidebar de prompts. Solo el prompt activo se envía a Omnia.
 
 ## Requisitos
 
@@ -49,8 +54,7 @@ npm install
 # Configurar variables de entorno
 cp .env.example .env.local
 # Editar .env.local con:
-# OMNIA_BASE_URL=http://217.216.43.75:9000
-# NEXT_PUBLIC_OMNIA_BASE_URL=http://217.216.43.75:9000
+# (Opcional, la URL de Omnia se configura desde el login)
 
 # Iniciar en desarrollo
 npm run dev
@@ -74,8 +78,8 @@ pm2 startup
 
 | Variable | Ámbito | Descripción |
 |----------|--------|-------------|
-| `OMNIA_BASE_URL` | Servidor | URL base de la API de Omnia |
-| `NEXT_PUBLIC_OMNIA_BASE_URL` | Cliente | URL base de la API de Omnia (para imágenes) |
+| `OMNIA_BASE_URL` | Servidor | URL base de la API de Omnia (fallback si no está en SQLite) |
+| `NEXT_PUBLIC_OMNIA_BASE_URL` | Cliente | URL base de la API de Omnia para imágenes (fallback) |
 
 ## Estructura del Proyecto
 
@@ -91,16 +95,21 @@ src/
 │   └── api/                     # API routes (proxy a Omnia)
 ├── components/
 │   ├── ChatClient.tsx           # Lógica principal del chat
-│   ├── IntegrationsSidebar.tsx  # Sidebar de integraciones
+│   ├── IntegrationsSidebar.tsx  # Sidebar de integraciones (solo credenciales)
+│   ├── PromptsSidebar.tsx       # Sidebar de prompts (system prompt + quick prompts)
 │   ├── AppSidebar.tsx           # Sidebar izquierdo (perfil, plan)
 │   ├── MarkdownEditor.tsx       # Editor markdown con toolbar
 │   ├── MarkdownRenderer.tsx     # Renderizador markdown
 │   ├── UsageHeader.tsx          # Barra de uso de tokens
+│   ├── AuthChecker.tsx          # Verificador de autenticación
+│   ├── ProfileContext.tsx       # Contexto de perfil
 │   ├── chat/                    # Sub-componentes del chat
 │   └── ui/                      # Componentes shadcn/ui
 ├── lib/
 │   ├── auth.ts                  # Utilidades de autenticación (caché en memoria + persistencia SQLite)
 │   ├── db.ts                    # SQLite via better-sqlite3 (.data/store.db)
+│   ├── omnia.ts                 # getBaseUrl() — lee URL desde SQLite
+│   ├── prompts.ts               # Modelo de prompts con defaults
 │   └── settings.ts              # Helpers cliente para API de settings/integrations
 ├── .data/
 │   └── store.db                 # SQLite database (gitignored)
@@ -119,8 +128,9 @@ src/
 | `/api/profile` | GET/PUT | Obtener/actualizar perfil |
 | `/api/profile/plan` | PUT | Cambiar plan |
 | `/api/plans` | GET | Listar planes |
-| `/api/settings` | GET/PUT | Leer/guardar settings (api_key, systemPrompt, theme) |
+| `/api/settings` | GET/PUT | Leer/guardar settings (api_key, systemPrompt, theme, omnia_base_url) |
 | `/api/integrations` | GET/PUT/DELETE | Leer/guardar/limpiar integraciones |
+| `/api/prompts` | GET/PUT | Leer/guardar prompts (system prompt + quick prompts por integración) |
 | `/api/integrations/woocommerce/test` | POST | Probar conexión WooCommerce |
 | `/api/integrations/evolution/test` | POST | Probar conexión Evolution API |
 | `/api/integrations/chatwoot/test` | POST | Probar conexión Chatwoot |

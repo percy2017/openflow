@@ -13,7 +13,7 @@ import { ChatInput } from "./chat/ChatInput";
 import { QuickPrompts } from "./chat/QuickPrompts";
 import type { Message, AttachedFile } from "./chat/types";
 import { getIntegrations } from "@/lib/settings";
-import type { PromptsData } from "@/lib/prompts";
+import type { PromptsData, PromptEntry } from "@/lib/prompts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type RawMessage = Record<string, any>;
@@ -216,18 +216,20 @@ export function ChatClient() {
 
     const integrationsData = await getIntegrations<Record<string, unknown>>();
 
-    const systemPrompts: string[] = [];
-    if (prompts?.general?.systemPrompt) systemPrompts.push(prompts.general.systemPrompt);
-    for (const key of enabledIntegrations) {
-      const entry = prompts?.[key as keyof PromptsData] as { systemPrompt?: string } | undefined;
-      if (entry?.systemPrompt) systemPrompts.push(entry.systemPrompt);
+    let activeSystemPrompt = "";
+    if (prompts) {
+      const p = prompts as unknown as { activeKey: string; [key: string]: unknown };
+      const activeKey = p.activeKey || "general";
+      const active = p[activeKey] as PromptEntry | undefined;
+      if (active?.systemPrompt) {
+        activeSystemPrompt = active.systemPrompt;
+      }
     }
-    const mergedSystemPrompt = systemPrompts.join("\n\n---\n\n");
 
     const msgToSend: Record<string, unknown> = { role: "user", content: messageContent };
     if (attachedFiles.length > 0) msgToSend.files = attachedFiles;
     const messagesToSend = [
-      ...(mergedSystemPrompt ? [{ role: "system" as const, content: mergedSystemPrompt }] : []),
+      ...(activeSystemPrompt ? [{ role: "system" as const, content: activeSystemPrompt }] : []),
       msgToSend,
     ];
 
@@ -304,6 +306,7 @@ export function ChatClient() {
                   </div>
                   <h2 className="text-2xl font-bold text-foreground mb-2">OpenFlow Agents</h2>
                   <p className="text-muted-foreground text-sm mb-5 leading-relaxed">Consola de agentes inteligentes. Escribe un mensaje para empezar.</p>
+                  <QuickPrompts prompts={prompts} onSelect={(q) => { setInput(q); }} />
                 </div>
               </div>
             ) : (
@@ -328,7 +331,6 @@ export function ChatClient() {
                 <div ref={bottomRef} />
               </div>
             )}
-            <QuickPrompts prompts={prompts} enabledIntegrations={enabledIntegrations} onSelect={(q) => { setInput(q); }} />
           </div>
         </div>
 

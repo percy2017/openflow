@@ -9,13 +9,14 @@
 - **pm2** for production process management
 
 ## Architecture
-- **No local DB.** User data, plans, chat history lives in **Omnia API** at `http://217.216.43.75:9000`
+- **No local DB.** User data, plans, chat history lives in **Omnia API** at configurable URL (set in login).
 - Frontend is a proxy-only layer. Auth via `Authorization: Bearer sk-omnia-...` from in-memory cache.
 - Settings (api_key, systemPrompt, theme) and integration credentials stored in **SQLite** (`.data/store.db`) via `better-sqlite3`.
 - Chat sends current message + integrations — Omnia manages history server-side.
 - **After each chat message, the frontend refetches `GET /v1/conversation`** to rebuild the full message list (does NOT rely on `data.history` from the chat response).
-- Server routes use `OMNIA_BASE_URL`, client uses `NEXT_PUBLIC_OMNIA_BASE_URL` (both in `.env.local`, gitignored)
-- Integrations, api_key, systemPrompt, and theme are stored in **SQLite** (`.data/store.db`) via API routes (`/api/settings`, `/api/integrations`).
+- Omnia base URL is configurable via login form and stored in SQLite. Server routes use `getBaseUrl()` from `src/lib/omnia.ts`.
+- Integrations, api_key, systemPrompt, theme, and omnia_base_url are stored in **SQLite** (`.data/store.db`) via API routes (`/api/settings`, `/api/integrations`).
+- Prompts (system prompts + quick prompts per integration) stored in SQLite via `/api/prompts`.
 - Production runs via **pm2** on port 3000 (config: `ecosystem.config.cjs`).
 
 ## Critical Conventions
@@ -30,6 +31,16 @@
     "woocommerce": { "siteUrl": "...", "consumerKey": "...", "consumerSecret": "..." },
     "evolution": { "url": "...", "token": "..." },
     "chatwoot": { "baseUrl": "...", "token": "...", "accountId": "..." }
+  }
+  ```
+- **Prompts JSON format stored in SQLite**:
+  ```json
+  {
+    "activeKey": "general",
+    "general": { "systemPrompt": "...", "quickPrompts": ["..."] },
+    "woocommerce": { "systemPrompt": "...", "quickPrompts": ["..."] },
+    "evolution": { "systemPrompt": "...", "quickPrompts": ["..."] },
+    "chatwoot": { "systemPrompt": "...", "quickPrompts": ["..."] }
   }
   ```
 - **Tailwind 4**: No `tailwind.config.js`. CSS is applied via `@import "tailwindcss"` in globals.css.

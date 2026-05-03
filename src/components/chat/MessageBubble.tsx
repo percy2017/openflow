@@ -37,14 +37,22 @@ function ToolBubble({ message }: { message: Message }) {
 }
 
 function UserBubble({ message }: { message: Message }) {
-  const OMNIA_BASE = process.env.NEXT_PUBLIC_OMNIA_BASE_URL || "http://217.216.43.75:9000";
+  const [omniaBase, setOmniaBase] = useState("http://omnia.local");
+
+  useEffect(() => {
+    fetch("/api/settings?key=omnia_base_url")
+      .then((r) => r.json())
+      .then((d) => { if (d.value) setOmniaBase(d.value); })
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="flex justify-end px-2">
       <div className="bg-blue-500 text-white rounded-2xl rounded-br-md px-4 py-2 max-w-[80%]">
         {message.files && message.files.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-2">
             {message.files.map((file, i) => {
-              const fileUrl = file.url?.startsWith("http") ? file.url : `${OMNIA_BASE}${file.url}`;
+              const fileUrl = file.url?.startsWith("http") ? file.url : `${omniaBase}${file.url}`;
               // eslint-disable-next-line @next/next/no-img-element
               return <img key={i} src={fileUrl} alt={file.name} className="max-w-[200px] rounded-lg" />;
             })}

@@ -2,13 +2,11 @@
 
 import { SidebarHeader, SidebarContent } from "@/components/ui/sidebar";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
-import { useState, useEffect, useCallback } from "react";
-import { Plug, Globe, Key, Lock, CheckCircle, Loader2, ExternalLink, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, X, MessageSquare, Server, MessageCircle, Hash, Plus, Lightbulb } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Plug, Globe, Key, Lock, CheckCircle, Loader2, ExternalLink, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, X, Server, MessageCircle, Hash } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { MarkdownEditor } from "@/components/MarkdownEditor";
-import { getSetting, setSetting, getIntegrations, setIntegrations } from "@/lib/settings";
-import type { PromptsData, PromptEntry } from "@/lib/prompts";
+import { getIntegrations, setIntegrations } from "@/lib/settings";
 
 type WooConfig = { siteUrl: string; consumerKey: string; consumerSecret: string };
 type EvolutionConfig = { url: string; token: string };
@@ -20,8 +18,6 @@ type IntegrationsData = {
   evolution?: EvolutionConfig;
   chatwoot?: ChatwootConfig;
 };
-
-type IntegrationKey = "general" | "woocommerce" | "evolution" | "chatwoot";
 
 type IntegrationCardProps = {
   title: string;
@@ -68,70 +64,6 @@ function IntegrationCard({ title, icon, isConnected, isEnabled, onToggle, childr
   );
 }
 
-function PromptEditor({ entry, onChange }: { entry: PromptEntry; onChange: (e: PromptEntry) => void }) {
-  const [newQuick, setNewQuick] = useState("");
-
-  const addQuick = () => {
-    const t = newQuick.trim();
-    if (!t) return;
-    onChange({ ...entry, quickPrompts: [...entry.quickPrompts, t] });
-    setNewQuick("");
-  };
-
-  const removeQuick = (i: number) => {
-    onChange({ ...entry, quickPrompts: entry.quickPrompts.filter((_, idx) => idx !== i) });
-  };
-
-  return (
-    <div className="space-y-3 pt-2 border-t border-sidebar-border/50">
-      <div>
-        <label className="flex items-center gap-1.5 text-xs text-sidebar-foreground/60 mb-1.5">
-          <MessageSquare className="w-3 h-3" /> System Prompt
-        </label>
-        <MarkdownEditor
-          value={entry.systemPrompt}
-          onChange={(v) => onChange({ ...entry, systemPrompt: v })}
-          placeholder="Escribe un system prompt para esta integración..."
-        />
-      </div>
-      <div>
-        <label className="flex items-center gap-1.5 text-xs text-sidebar-foreground/60 mb-1.5">
-          <Lightbulb className="w-3 h-3" /> Quick Prompts
-        </label>
-        <div className="space-y-1.5">
-          {entry.quickPrompts.map((q, i) => (
-            <div key={i} className="flex items-center gap-1.5 group">
-              <span className="flex-1 text-xs text-sidebar-foreground/80 px-2 py-1 rounded bg-muted/50">{q}</span>
-              <button
-                onClick={() => removeQuick(i)}
-                className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-destructive/10 text-destructive transition-opacity"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          ))}
-        </div>
-        <div className="flex items-center gap-1.5 mt-1.5">
-          <input
-            value={newQuick}
-            onChange={(e) => setNewQuick(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addQuick(); } }}
-            placeholder="Nuevo quick prompt..."
-            className="flex-1 bg-muted border border-input rounded-lg px-2.5 py-1.5 text-xs text-sidebar-foreground placeholder:text-sidebar-foreground/40 focus:outline-none focus:border-ring transition-colors"
-          />
-          <button
-            onClick={addQuick}
-            disabled={!newQuick.trim()}
-            className="p-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50"
-          >
-            <Plus className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function IntegrationsSidebar({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const [data, setData] = useState<IntegrationsData>({ enabled: [] });
   const [wcForm, setWcForm] = useState<WooConfig>({ siteUrl: "", consumerKey: "", consumerSecret: "" });
@@ -141,7 +73,6 @@ export function IntegrationsSidebar({ open, onOpenChange }: { open: boolean; onO
   const [wcConnected, setWcConnected] = useState(false);
   const [evConnected, setEvConnected] = useState(false);
   const [cwConnected, setCwConnected] = useState(false);
-  const [prompts, setPrompts] = useState<PromptsData | null>(null);
 
   useEffect(() => {
     getIntegrations<IntegrationsData>().then((d) => {
@@ -150,7 +81,6 @@ export function IntegrationsSidebar({ open, onOpenChange }: { open: boolean; onO
       if (d.evolution) { setEvForm(d.evolution); setEvConnected(true); }
       if (d.chatwoot) { setCwForm(d.chatwoot); setCwConnected(true); }
     });
-    fetch("/api/prompts").then((r) => r.json()).then(setPrompts);
   }, []);
 
   useEffect(() => {
@@ -160,24 +90,11 @@ export function IntegrationsSidebar({ open, onOpenChange }: { open: boolean; onO
     return () => document.removeEventListener("keydown", handleEsc);
   }, [open, onOpenChange]);
 
-  const savePrompt = useCallback((key: IntegrationKey, entry: PromptEntry) => {
-    if (!prompts) return;
-    const updated = { ...prompts, [key]: entry };
-    setPrompts(updated);
-    fetch("/api/prompts", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updated),
-    }).catch(() => {});
-  }, [prompts]);
-
-  const saveIntegrations = (d: IntegrationsData) => {
-    setIntegrations(d);
-  };
-
   const wcEnabled = data.enabled.includes("woocommerce");
   const evEnabled = data.enabled.includes("evolution");
   const cwEnabled = data.enabled.includes("chatwoot");
+
+  const saveIntegrations = (d: IntegrationsData) => setIntegrations(d);
 
   const toggleEnabled = (key: string) => {
     const updated = { ...data };
@@ -194,9 +111,7 @@ export function IntegrationsSidebar({ open, onOpenChange }: { open: boolean; onO
     if (!wcForm.siteUrl || !wcForm.consumerKey || !wcForm.consumerSecret) { toast.error("Completa todos los campos"); return; }
     setTesting(true);
     try {
-      const res = await fetch("/api/integrations/woocommerce/test", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(wcForm),
-      });
+      const res = await fetch("/api/integrations/woocommerce/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(wcForm) });
       const result = await res.json();
       if (result.success) {
         const updated: IntegrationsData = { ...data, woocommerce: wcForm, enabled: data.enabled.includes("woocommerce") ? data.enabled : [...data.enabled, "woocommerce"] };
@@ -218,9 +133,7 @@ export function IntegrationsSidebar({ open, onOpenChange }: { open: boolean; onO
     if (!evForm.url || !evForm.token) { toast.error("Completa todos los campos"); return; }
     setTesting(true);
     try {
-      const res = await fetch("/api/integrations/evolution/test", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(evForm),
-      });
+      const res = await fetch("/api/integrations/evolution/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(evForm) });
       const result = await res.json();
       if (result.success) {
         const updated: IntegrationsData = { ...data, evolution: evForm, enabled: data.enabled.includes("evolution") ? data.enabled : [...data.enabled, "evolution"] };
@@ -242,9 +155,7 @@ export function IntegrationsSidebar({ open, onOpenChange }: { open: boolean; onO
     if (!cwForm.baseUrl || !cwForm.token || !cwForm.accountId) { toast.error("Completa todos los campos"); return; }
     setTesting(true);
     try {
-      const res = await fetch("/api/integrations/chatwoot/test", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cwForm),
-      });
+      const res = await fetch("/api/integrations/chatwoot/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cwForm) });
       const result = await res.json();
       if (result.success) {
         const updated: IntegrationsData = { ...data, chatwoot: cwForm, enabled: data.enabled.includes("chatwoot") ? data.enabled : [...data.enabled, "chatwoot"] };
@@ -266,7 +177,7 @@ export function IntegrationsSidebar({ open, onOpenChange }: { open: boolean; onO
     <>
       {open && <div className="fixed inset-0 z-30 bg-black/20 md:bg-black/0" onClick={() => onOpenChange(false)} />}
       <div className={cn(
-        "fixed top-0 right-0 z-40 h-full w-80 bg-sidebar text-sidebar-foreground border-l border-sidebar-border shadow-lg",
+        "fixed top-0 right-0 z-40 h-full w-80 bg-sidebar text-sidebar-foreground border-l border-sidebar-border shadow-lg flex flex-col",
         "transition-transform duration-200 ease-linear",
         open ? "translate-x-0" : "translate-x-full"
       )}>
@@ -283,20 +194,6 @@ export function IntegrationsSidebar({ open, onOpenChange }: { open: boolean; onO
         </SidebarHeader>
 
         <SidebarContent className="flex-1 overflow-y-auto p-3 space-y-2">
-          {/* General prompts */}
-          {prompts && (
-            <div className="rounded-lg border border-sidebar-border overflow-hidden">
-              <div className="px-3 py-2.5 bg-muted/30 flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 text-sidebar-foreground/60 shrink-0" />
-                <span className="text-sm font-medium text-sidebar-foreground">General</span>
-              </div>
-              <div className="p-3">
-                <PromptEditor entry={prompts.general} onChange={(e) => savePrompt("general", e)} />
-              </div>
-            </div>
-          )}
-
-          {/* WooCommerce */}
           <IntegrationCard title="WooCommerce" icon={<Globe className="w-4 h-4 text-blue-500 shrink-0" />}
             isConnected={wcConnected} isEnabled={wcEnabled} onToggle={() => toggleEnabled("woocommerce")}
           >
@@ -329,16 +226,14 @@ export function IntegrationsSidebar({ open, onOpenChange }: { open: boolean; onO
               Genera tus credenciales en WooCommerce &gt; Ajustes &gt; Avanzado &gt; API REST.
               <a href="https://woocommerce.com/document/woocommerce-rest-api/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-blue-500 hover:text-blue-400 ml-1">Guía <ExternalLink className="w-2.5 h-2.5" /></a>
             </p>
-            {prompts && <PromptEditor entry={prompts.woocommerce} onChange={(e) => savePrompt("woocommerce", e)} />}
           </IntegrationCard>
 
-          {/* Evolution API */}
           <IntegrationCard title="Evolution API" icon={<Server className="w-4 h-4 text-purple-500 shrink-0" />}
             isConnected={evConnected} isEnabled={evEnabled} onToggle={() => toggleEnabled("evolution")}
           >
             <div className="space-y-2">
               <label className="flex items-center gap-1.5 text-xs text-sidebar-foreground/60"><Server className="w-3 h-3" /> URL del servidor</label>
-              <input value={evForm.url} onChange={(e) => setEvForm({ ...evForm, url: e.target.value })} placeholder="http://217.216.43.75:2001"
+              <input value={evForm.url} onChange={(e) => setEvForm({ ...evForm, url: e.target.value })} placeholder="https://evolution-api.local"
                 className="w-full bg-muted border border-input rounded-lg px-3 py-2 text-sm text-sidebar-foreground placeholder:text-sidebar-foreground/40 focus:outline-none focus:border-ring transition-colors font-mono" />
             </div>
             <div className="space-y-2">
@@ -356,10 +251,8 @@ export function IntegrationsSidebar({ open, onOpenChange }: { open: boolean; onO
                 </button>
               )}
             </div>
-            {prompts && <PromptEditor entry={prompts.evolution} onChange={(e) => savePrompt("evolution", e)} />}
           </IntegrationCard>
 
-          {/* Chatwoot */}
           <IntegrationCard title="Chatwoot" icon={<MessageCircle className="w-4 h-4 text-cyan-500 shrink-0" />}
             isConnected={cwConnected} isEnabled={cwEnabled} onToggle={() => toggleEnabled("chatwoot")}
           >
@@ -388,7 +281,6 @@ export function IntegrationsSidebar({ open, onOpenChange }: { open: boolean; onO
                 </button>
               )}
             </div>
-            {prompts && <PromptEditor entry={prompts.chatwoot} onChange={(e) => savePrompt("chatwoot", e)} />}
           </IntegrationCard>
 
           <div className="px-3 py-3 rounded-lg border border-dashed border-sidebar-border text-center">

@@ -1,9 +1,9 @@
-const OMNIA_BASE = process.env.OMNIA_BASE_URL || "http://217.216.43.75:9000";
+import { getBaseUrl } from "@/lib/omnia";
 
 export async function POST(req: Request) {
   const { email } = await req.json();
 
-  const res = await fetch(`${OMNIA_BASE}/v1/check-email`, {
+  const res = await fetch(`${getBaseUrl()}/v1/check-email`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

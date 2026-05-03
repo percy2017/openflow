@@ -5,12 +5,13 @@ import { UsageHeader } from "@/components/UsageHeader";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { IntegrationsSidebar } from "@/components/IntegrationsSidebar";
+import { PromptsSidebar } from "@/components/PromptsSidebar";
 import { toast } from "sonner";
 import { clearToken, getToken } from "@/lib/auth";
 import { AuthChecker } from "@/components/AuthChecker";
 import { ProfileProvider } from "@/components/ProfileContext";
 import { Button } from "@/components/ui/button";
-import { Plug, LogOut, Trash2, Download, XCircle } from "lucide-react";
+import { Plug, LogOut, Trash2, Download, XCircle, MessageSquare } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog } from "@base-ui/react/dialog";
@@ -27,6 +28,7 @@ export default function MainLayout({
 }) {
   const router = useRouter();
   const [integrationsOpen, setIntegrationsOpen] = useState(false);
+  const [promptsOpen, setPromptsOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
@@ -107,6 +109,17 @@ export default function MainLayout({
                 <Button
                   variant="ghost"
                   size="icon-sm"
+                  onClick={() => setPromptsOpen(!promptsOpen)}
+                  className="text-slate-400 hover:text-white"
+                  aria-label="Prompts"
+                  title={promptsOpen ? "Cerrar prompts" : "Abrir prompts"}
+                  data-active={promptsOpen || undefined}
+                >
+                  <MessageSquare className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
                   onClick={() => setIntegrationsOpen(!integrationsOpen)}
                   className="text-slate-400 hover:text-white"
                   aria-label="Integraciones"
@@ -132,6 +145,7 @@ export default function MainLayout({
             </main>
           </SidebarInset>
           <IntegrationsSidebar open={integrationsOpen} onOpenChange={setIntegrationsOpen} />
+          <PromptsSidebar open={promptsOpen} onOpenChange={setPromptsOpen} />
 
           {/* Clear History Dialog */}
           <Dialog.Root open={showClearConfirm} onOpenChange={setShowClearConfirm}>

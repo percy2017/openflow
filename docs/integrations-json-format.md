@@ -50,7 +50,7 @@ Solo se envían las integraciones que el usuario tiene **habilitadas y conectada
 {
   "integrations": {
     "evolution": {
-      "url": "http://217.216.43.75:2001",
+      "url": "https://evolution-api.local",
       "token": "evolution2001"
     }
   }

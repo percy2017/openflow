@@ -1,4 +1,4 @@
-const OMNIA_BASE = process.env.OMNIA_BASE_URL || "http://217.216.43.75:9000";
+import { getBaseUrl } from "@/lib/omnia";
 
 export async function PUT(req: Request) {
   const token = req.headers.get("authorization")?.replace("Bearer ", "");
@@ -7,7 +7,7 @@ export async function PUT(req: Request) {
   }
 
   const body = await req.json();
-  const res = await fetch(`${OMNIA_BASE}/v1/profile/plan`, {
+  const res = await fetch(`${getBaseUrl()}/v1/profile/plan`, {
     method: "PUT",
     headers: {
       Authorization: `Bearer ${token}`,

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bot, Crown, Loader2, Check, ArrowRight } from "lucide-react";
+import { Bot, Crown, Loader2, Check, ArrowRight, Server } from "lucide-react";
 import { saveToken } from "@/lib/auth";
 import { toast } from "sonner";
 
@@ -35,8 +35,13 @@ export default function LoginPage() {
   const [checkingEmail, setCheckingEmail] = useState(false);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [existingUser, setExistingUser] = useState<CheckEmailResponse["user"] | null>(null);
+  const [omniaUrl, setOmniaUrl] = useState("http://omnia.local");
 
   useEffect(() => {
+    fetch("/api/settings?key=omnia_base_url")
+      .then((r) => r.json())
+      .then((d) => { if (d.value) setOmniaUrl(d.value); })
+      .catch(() => {});
     fetch("/api/plans")
       .then((r) => r.json())
       .then((data) => setPlans(data))
@@ -49,6 +54,12 @@ export default function LoginPage() {
       toast.error("Ingresa tu correo");
       return;
     }
+
+    fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "omnia_base_url", value: omniaUrl }),
+    }).catch(() => {});
 
     setCheckingEmail(true);
     try {
@@ -113,6 +124,18 @@ export default function LoginPage() {
 
         {step === "email" && (
           <form onSubmit={handleEmailSubmit} className="space-y-4">
+            <div>
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
+                <Server className="w-3 h-3" /> URL de Omnia
+              </label>
+              <input
+                type="text"
+                value={omniaUrl}
+                onChange={(e) => setOmniaUrl(e.target.value)}
+                placeholder="http://omnia.local"
+                className="w-full bg-muted border border-input rounded-lg px-4 py-3 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring/30 transition-colors font-mono text-sm"
+              />
+            </div>
             <div>
               <input
                 type="email"

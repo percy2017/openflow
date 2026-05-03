@@ -1,4 +1,4 @@
-const OMNIA_BASE = process.env.OMNIA_BASE_URL || "http://217.216.43.75:9000";
+import { getBaseUrl } from "@/lib/omnia";
 
 export async function POST(req: Request) {
   const token = req.headers.get("authorization")?.replace("Bearer ", "");
@@ -16,7 +16,7 @@ export async function POST(req: Request) {
 
   console.log("[chat-proxy] Sending to Omnia:", JSON.stringify(body).slice(0, 600));
 
-  const res = await fetch(`${OMNIA_BASE}/v1/chat/completions`, {
+  const res = await fetch(`${getBaseUrl()}/v1/chat/completions`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,

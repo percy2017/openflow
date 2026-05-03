@@ -2,7 +2,21 @@ import { get, set } from "@/lib/db";
 
 const PROMPTS_KEY = "prompts";
 
+export type PromptEntry = {
+  systemPrompt: string;
+  quickPrompts: string[];
+};
+
+export type PromptsData = {
+  activeKey: string;
+  general: PromptEntry;
+  woocommerce: PromptEntry;
+  evolution: PromptEntry;
+  chatwoot: PromptEntry;
+};
+
 const DEFAULTS: PromptsData = {
+  activeKey: "general",
   general: {
     systemPrompt: "Eres un asistente IA útil y conversacional. Responde en español de forma clara y profesional.",
     quickPrompts: ["¿Quién eres y qué puedes hacer?", "¿Qué herramientas tienes disponibles?", "¿Qué hora y fecha tienes?", "Cuéntame un dato interesante"],
@@ -21,23 +35,13 @@ const DEFAULTS: PromptsData = {
   },
 };
 
-export type PromptEntry = {
-  systemPrompt: string;
-  quickPrompts: string[];
-};
-
-export type PromptsData = {
-  general: PromptEntry;
-  woocommerce: PromptEntry;
-  evolution: PromptEntry;
-  chatwoot: PromptEntry;
-};
-
 export function getPrompts(): PromptsData {
   const raw = get(PROMPTS_KEY);
   if (raw) {
     try {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (!parsed.activeKey) parsed.activeKey = "general";
+      return parsed;
     } catch {
       return structuredClone(DEFAULTS);
     }
